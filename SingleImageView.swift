@@ -121,8 +121,6 @@ struct SingleImageView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)   
-                    .contrast(1.1) //对比度和亮度
-                    .brightness(0.03)                 
                     .overlay( //锐化边缘增强
                         Image(nsImage: nsImage)
                             .resizable()
@@ -131,6 +129,9 @@ struct SingleImageView: View {
                             .blendMode(.difference)  // 差异混合突出边缘
                             .opacity(0.2)  // 降低强度
                     )
+                    .contrast(1.2) //对比度和亮度
+                    .brightness(0.05)                 
+
                     .onAppear {
 
                     }
