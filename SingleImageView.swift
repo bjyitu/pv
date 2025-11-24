@@ -39,23 +39,31 @@ struct SingleImageView: View {
         .overlay(
             UnifiedKeyboardListener(viewModel: viewModel, mode: .single)
         )
-        .onTapGesture(count: 2) {
-            viewModel.stopAutoPlay()
-            
-            // 优化切换逻辑：确保从单图返回列表时显示完整目录内容
-            if viewModel.isSingleViewMode {
-                // 从单图切换到列表视图
-                viewModel.toggleViewMode()
-                
-                // 确保焦点正确设置到列表视图
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
+        .gesture(
+            TapGesture()
+                .onEnded { _ in
+                    // 使用与ListView一致的NSApp.currentEvent检测方法
+                    let isDoubleClick = NSApp.currentEvent?.clickCount == 2
+                    
+                    if isDoubleClick {
+                        viewModel.stopAutoPlay()
+                        
+                        // 优化切换逻辑：确保从单图返回列表时显示完整目录内容
+                        if viewModel.isSingleViewMode {
+                            // 从单图切换到列表视图
+                            viewModel.toggleViewMode()
+                            
+                            // 确保焦点正确设置到列表视图
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
+                            }
+                        } else {
+                            // 从列表切换到单图视图
+                            viewModel.toggleViewMode()
+                        }
+                    }
                 }
-            } else {
-                // 从列表切换到单图视图
-                viewModel.toggleViewMode()
-            }
-        }
+        )
         .onAppear {
             // DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 if let currentImage = self.currentImage {
@@ -112,14 +120,14 @@ struct SingleImageView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contrast(1.05) //对比度和亮度
-                    .brightness(0.03)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)   
+                    .contrast(1.1) //对比度和亮度
+                    .brightness(0.03)                 
                     .overlay( //锐化边缘增强
                         Image(nsImage: nsImage)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .blur(radius: 2)  // 轻微模糊
+                            .blur(radius: 1)  // 轻微模糊
                             .blendMode(.difference)  // 差异混合突出边缘
                             .opacity(0.2)  // 降低强度
                     )
