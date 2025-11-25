@@ -42,7 +42,6 @@ struct SingleImageView: View {
                 .ignoresSafeArea()
             if let currentImage = currentImage {
                 imageView(for: currentImage)
-                    .scaleEffect(scale)
                     .offset(offset)
             } else {
                 Text("没有图片")
@@ -93,20 +92,18 @@ struct SingleImageView: View {
                 }
         )
         .onAppear {
-            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                if let currentImage = self.currentImage {
-                    UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
-                    viewModel.isFirstTimeInSingleView = false
-                }
-            // }
+
+            if let currentImage = self.currentImage {
+                UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
+                viewModel.isFirstTimeInSingleView = false
+            }
             //实现窗口可拖
-            // NSApp.windows.first?.isMovableByWindowBackground = true
-            // 只在这个视图激活时设置
             if controlActiveState == .key {
                 NSApp.keyWindow?.isMovableByWindowBackground = true
             }
         }
         .onChange(of: viewModel.currentImageIndex) { _ in
+            //修改窗口大小,如果是第一张
             if viewModel.isFirstTimeInSingleView {
                 if let currentImage = self.currentImage {
                     UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
@@ -158,14 +155,18 @@ struct SingleImageView: View {
                             .opacity(SingleImageViewConstants.edgeEnhancementOpacity)  // 降低强度
                     )
                     .contrast(SingleImageViewConstants.contrastEnhancement) //对比度和亮度
-                    .brightness(SingleImageViewConstants.brightnessAdjustment)                 
+                    .brightness(SingleImageViewConstants.brightnessAdjustment)    
+                    .scaleEffect(scale)
                     .onAppear {
 
                     }
                     .onChange(of: viewModel.currentImageIndex) { _ in
+                        withAnimation(.linear(duration: 0)) {
+                            scale = SingleImageViewConstants.initialScale
+                        }                        
                         // 当切换图片时重置缩放并重新触发动画
                         scale = SingleImageViewConstants.initialScale
-                        withAnimation(.easeInOut(duration: viewModel.autoPlayInterval-1)) {
+                        withAnimation(.easeOut(duration: viewModel.autoPlayInterval-2)) {
                             scale = SingleImageViewConstants.targetScale
                         }
                     }
