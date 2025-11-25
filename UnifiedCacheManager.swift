@@ -2,17 +2,53 @@ import Foundation
 import AppKit
 import SwiftUI
 
+/// UnifiedCacheManager常量定义
+struct UnifiedCacheManagerConstants {
+    /// 缓存配置相关常量
+    struct CacheConfig {
+        /// 最大缓存项目数量
+        static let maxCacheSize: Int = 2000
+        /// 最大内存使用量（字节）- 8000MB
+        static let maxMemoryUsage: Int = 8000 * 1024 * 1024
+    }
+    
+    /// 队列相关常量
+    struct Queues {
+        /// 缓存队列标识符
+        static let cacheQueueIdentifier = "com.pv.cache"
+    }
+    
+    /// 图像处理相关常量
+    struct ImageProcessing {
+        /// 缩略图选项配置
+        static let thumbnailOptions: [String: Any] = [
+            kCGImageSourceCreateThumbnailWithTransform as String: true,
+            kCGImageSourceCreateThumbnailFromImageAlways as String: true
+        ]
+        
+        /// 图像属性键
+        struct PropertyKeys {
+            /// 像素宽度属性键
+            static let pixelWidth = kCGImagePropertyPixelWidth as String
+            /// 像素高度属性键
+            static let pixelHeight = kCGImagePropertyPixelHeight as String
+            /// 缩略图最大像素尺寸属性键
+            static let thumbnailMaxPixelSize = kCGImageSourceThumbnailMaxPixelSize as String
+        }
+    }
+}
+
 class UnifiedCacheManager: ObservableObject {
     static let shared = UnifiedCacheManager()
     
-    static let maxCacheSize = 2000
-    static let maxMemoryUsage = 8000 * 1024 * 1024 // 8000MB
+    static let maxCacheSize = UnifiedCacheManagerConstants.CacheConfig.maxCacheSize
+    static let maxMemoryUsage = UnifiedCacheManagerConstants.CacheConfig.maxMemoryUsage // 8000MB
     
     private let thumbnailCache = NSCache<NSString, NSImage>()
     
     private var recordedListWindowSizes: [String: CGSize] = [:]
     
-    private let cacheQueue = DispatchQueue(label: "com.pv.cache", attributes: .concurrent)
+    private let cacheQueue = DispatchQueue(label: UnifiedCacheManagerConstants.Queues.cacheQueueIdentifier, attributes: .concurrent)
     
     private init() {
         thumbnailCache.countLimit = UnifiedCacheManager.maxCacheSize
@@ -58,8 +94,8 @@ class UnifiedCacheManager: ObservableObject {
             }
             
             guard let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any],
-                  let pixelWidth = imageProperties[kCGImagePropertyPixelWidth as String] as? CGFloat,
-                  let pixelHeight = imageProperties[kCGImagePropertyPixelHeight as String] as? CGFloat else {
+                  let pixelWidth = imageProperties[UnifiedCacheManagerConstants.ImageProcessing.PropertyKeys.pixelWidth] as? CGFloat,
+                  let pixelHeight = imageProperties[UnifiedCacheManagerConstants.ImageProcessing.PropertyKeys.pixelHeight] as? CGFloat else {
                 DispatchQueue.main.async {
                     completion(nil)
                 }
@@ -74,11 +110,8 @@ class UnifiedCacheManager: ObservableObject {
                 thumbnailSize = CGSize(width: size.height * aspectRatio, height: size.height)
             }
             
-            let options: [String: Any] = [
-                kCGImageSourceCreateThumbnailWithTransform as String: true,
-                kCGImageSourceCreateThumbnailFromImageAlways as String: true,
-                kCGImageSourceThumbnailMaxPixelSize as String: max(thumbnailSize.width, thumbnailSize.height)
-            ]
+            var options = UnifiedCacheManagerConstants.ImageProcessing.thumbnailOptions
+            options[UnifiedCacheManagerConstants.ImageProcessing.PropertyKeys.thumbnailMaxPixelSize] = max(thumbnailSize.width, thumbnailSize.height)
             
             guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
                 DispatchQueue.main.async {
