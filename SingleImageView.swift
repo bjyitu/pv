@@ -1,8 +1,38 @@
 import SwiftUI
 
+/// 单图视图常量定义
+struct SingleImageViewConstants {
+    /// 图片初始缩放比例
+    static let initialScale: CGFloat = 1.1
+    
+    /// 图片动画结束时的缩放比例
+    static let targetScale: CGFloat = 1.15
+    
+    /// 进度条高度（像素）
+    static let progressBarHeight: CGFloat = 4
+    
+    /// 自动加载更多图片的阈值（距离末尾的图片数量）
+    static let loadMoreThreshold: Int = 5
+    
+    /// 图片边缘增强效果的模糊半径
+    static let edgeEnhancementBlurRadius: CGFloat = 1
+    
+    /// 边缘增强效果的不透明度
+    static let edgeEnhancementOpacity: CGFloat = 0.2
+    
+    /// 图片对比度增强值
+    static let contrastEnhancement: CGFloat = 1.2
+    
+    /// 图片亮度调整值
+    static let brightnessAdjustment: CGFloat = 0.05
+    
+    /// 占位符图标的大小
+    static let placeholderIconSize: CGFloat = 48
+}
+
 struct SingleImageView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
-    @State private var scale: CGFloat = 1.1
+    @State private var scale: CGFloat = SingleImageViewConstants.initialScale
     @State private var offset: CGSize = .zero
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -32,7 +62,7 @@ struct SingleImageView: View {
                             )
                             .animation(.linear, value: viewModel.currentImageIndex)
                     }
-                    .frame(height: 4)
+                    .frame(height: SingleImageViewConstants.progressBarHeight)
                 }
             }
         }
@@ -53,10 +83,8 @@ struct SingleImageView: View {
                             // 从单图切换到列表视图
                             viewModel.toggleViewMode()
                             
-                            // 确保焦点正确设置到列表视图
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
-                            }
+                            // 确保焦点正确设置到列表视图,model里有延迟设定0.3秒
+                            NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
                         } else {
                             // 从列表切换到单图视图
                             viewModel.toggleViewMode()
@@ -104,7 +132,7 @@ struct SingleImageView: View {
     
     private func checkAndLoadMoreIfNeeded() {
         // 当浏览到接近列表末尾时自动加载更多图片
-        let threshold = 5 // 距离末尾5张图片时触发加载
+        let threshold = SingleImageViewConstants.loadMoreThreshold // 距离末尾5张图片时触发加载
         let currentIndex = viewModel.currentImageIndex
         let totalImages = viewModel.images.count
         
@@ -125,20 +153,20 @@ struct SingleImageView: View {
                         Image(nsImage: nsImage)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .blur(radius: 1)  // 轻微模糊
+                            .blur(radius: SingleImageViewConstants.edgeEnhancementBlurRadius)  // 轻微模糊
                             .blendMode(.difference)  // 差异混合突出边缘
-                            .opacity(0.2)  // 降低强度
+                            .opacity(SingleImageViewConstants.edgeEnhancementOpacity)  // 降低强度
                     )
-                    .contrast(1.2) //对比度和亮度
-                    .brightness(0.05)                 
+                    .contrast(SingleImageViewConstants.contrastEnhancement) //对比度和亮度
+                    .brightness(SingleImageViewConstants.brightnessAdjustment)                 
                     .onAppear {
 
                     }
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         // 当切换图片时重置缩放并重新触发动画
-                        scale = 1.1
+                        scale = SingleImageViewConstants.initialScale
                         withAnimation(.easeInOut(duration: viewModel.autoPlayInterval-1)) {
-                            scale = 1.15
+                            scale = SingleImageViewConstants.targetScale
                         }
                     }
             } else {
@@ -146,7 +174,7 @@ struct SingleImageView: View {
                     .fill(Color.gray)
                     .overlay(
                         Image(systemName: "photo")
-                            .font(.system(size: 48))
+                            .font(.system(size: SingleImageViewConstants.placeholderIconSize))
                             .foregroundColor(.white)
                     )
             }
