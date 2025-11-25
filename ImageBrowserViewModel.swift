@@ -20,7 +20,9 @@ class ImageBrowserViewModel: ObservableObject {
     
     @Published var manualThumbnailSize: CGFloat = 200
     
-    
+    // 随机排序状态管理
+    @Published var isRandomOrderEnabled: Bool = false
+    private var originalImageOrder: [ImageItem] = []
     
     private var autoPlayTimer: Timer?
     
@@ -95,6 +97,15 @@ class ImageBrowserViewModel: ObservableObject {
                 let subImages = scanDirectoryRecursivelyComplete(dir)
                 allImages.append(contentsOf: subImages)
             }
+            
+            // 保存原始顺序
+            originalImageOrder = allImages
+            
+            // 启用随机排序
+            isRandomOrderEnabled = true
+            
+            // 对图片列表进行随机排序
+            allImages = randomizeImageOrder(allImages)
             
             // 保存所有扫描到的图片
             allScannedImages = allImages
@@ -180,6 +191,21 @@ class ImageBrowserViewModel: ObservableObject {
         }
         
         return images
+    }
+    
+    // 高效随机排序算法
+    private func randomizeImageOrder(_ images: [ImageItem]) -> [ImageItem] {
+        guard images.count > 1 else { return images }
+        
+        var shuffled = images
+        
+        // 使用Fisher-Yates洗牌算法，时间复杂度O(n)
+        for i in stride(from: shuffled.count - 1, through: 1, by: -1) {
+            let j = Int.random(in: 0...i)
+            shuffled.swapAt(i, j)
+        }
+        
+        return shuffled
     }
     
     private func isImageFile(_ url: URL) -> Bool {
@@ -550,14 +576,6 @@ class ImageBrowserViewModel: ObservableObject {
         scrollProxy = nil
     }
     
-
-    
-    enum ScrollPosition {
-        case top
-        case center
-        case bottom
-    }
-    
     func handleScrollToIndex(_ targetIndex: Int) {
         UnifiedWindowManager.shared.handleScrollToIndex(targetIndex)
     }
@@ -572,6 +590,9 @@ class ImageBrowserViewModel: ObservableObject {
     }
        
     func selectDirectory() {
+        // 清空当前选中的图片
+        self.selectedImages.removeAll()
+        
         let openPanel = NSOpenPanel()
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = true
