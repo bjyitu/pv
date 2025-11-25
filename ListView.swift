@@ -1,5 +1,56 @@
 import SwiftUI
 
+// 样式常量
+struct ListViewConstants {
+    /// 每行显示的图片数量，影响网格布局的列数
+    static let imagesPerRow = 6
+    
+    /// 图片之间的间距（水平和垂直方向相同）
+    static let spacing: CGFloat = 10
+    
+    /// 列表视图的水平内边距，用于左右两侧的留白
+    static let horizontalPadding: CGFloat = 6
+    
+    /// 图片缩略图的圆角半径，影响视觉风格
+    static let cornerRadius: CGFloat = 4
+    
+    /// 选中图片时的边框宽度，用于突出显示选中状态
+    static let selectedBorderWidth: CGFloat = 2
+    
+    /// 缩略图缓存的最大数量，平衡内存使用和性能
+    static let maxCacheSize = 5
+    
+    /// 计算平均宽高比时采样的最大图片数量，避免性能问题
+    static let maxAspectRatioSampleSize = 100
+    
+    /// 滚动重试延迟时间（秒），用于处理目标项未渲染的情况
+    static let scrollRetryDelay: TimeInterval = 0.1
+    
+    /// 滚动状态清理延迟时间（秒），滚动完成后清理相关状态
+    static let scrollCleanupDelay: TimeInterval = 0.5
+    
+    /// 窗口大小变化检测阈值（像素），避免微小变化触发重布局
+    static let resizeDetectionThreshold: CGFloat = 10
+    
+    /// 窗口调整结束检测延迟时间（秒），用于判断窗口拉伸是否完成
+    static let resizeEndDelay: TimeInterval = 0.3
+    
+    /// 选中图片时的缩放比例，提供视觉反馈
+    static let selectedScale: CGFloat = 1.02
+    
+    /// 选中动画持续时间（秒），用于缩放和边框动画
+    static let selectionAnimationDuration: TimeInterval = 0.15
+    
+    /// 占位符图标的缩放比例，相对于缩略图尺寸
+    static let placeholderIconScale: CGFloat = 0.3
+    
+    /// 悬停效果的不透明度，用于鼠标悬停时的视觉反馈
+    static let hoverOpacity: CGFloat = 0.05
+    
+    /// 占位符背景的不透明度，用于空状态显示
+    static let placeholderBackgroundOpacity: CGFloat = 0.1
+}
+
 // 固定网格布局的行结构
 struct FixedGridRow {
     let images: [ImageItem]
@@ -13,14 +64,23 @@ struct ListView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
     @State private var availableWidth: CGFloat = 0
     @State private var hasReceivedGeometry = false
+    @State private var windowResizeTask: DispatchWorkItem? = nil
+    @State private var isWindowResizing = false
+    @State private var lastWindowSize: CGSize = .zero
+    @State private var resizeEndTimer: Timer? = nil
+    
+    // 布局缓存优化
+    @State private var layoutCache: [String: [FixedGridRow]] = [:]
+    @State private var lastLayoutWidth: CGFloat = 0
+    @State private var lastImageCount: Int = 0
     
     private func createFixedGridRows(from images: [ImageItem], availableWidth: CGFloat) -> [FixedGridRow] {
         guard !images.isEmpty else { return [] }
         
-        // 布局配置
-        let imagesPerRow = 6  // 每行6个缩图
-        let spacing: CGFloat = 10  // 图片间距
-        let horizontalPadding: CGFloat = 6  // 水平内边距
+        // 使用常量配置布局
+        let imagesPerRow = ListViewConstants.imagesPerRow
+        let spacing = ListViewConstants.spacing
+        let horizontalPadding = ListViewConstants.horizontalPadding
         
         // 计算可用宽度（减去水平内边距）
         let effectiveWidth = availableWidth - horizontalPadding * 2
@@ -78,79 +138,114 @@ struct ListView: View {
         print("图片尺寸: \(imageSize)")
         print("每行图片数: \(imagesPerRow)")
         
-        for (index, row) in rows.enumerated() {
-            print("第\(index + 1)行: \(row.images.count)张图片")
-        }
-        print("=== ListView 固定网格布局结束 ===")
-        
         return rows
     }
     
-    /// 计算图片的平均宽高比
+    /// 计算图片的平均宽高比（优化版本）
     private func calculateAverageAspectRatio(images: [ImageItem]) -> CGFloat {
         guard !images.isEmpty else { return 1.0 } // 默认宽高比
         
-        let totalAspectRatio = images.reduce(0.0) { result, image in
-            return result + (image.size.width / image.size.height)
-        }
+        // 优化：对于大量图片，使用采样计算而不是全部计算
+        let maxSampleSize = ListViewConstants.maxAspectRatioSampleSize
         
-        return totalAspectRatio / CGFloat(images.count)
+        if images.count <= maxSampleSize {
+            // 图片数量较少，直接计算
+            let totalAspectRatio = images.reduce(0.0) { result, image in
+                return result + (image.size.width / image.size.height)
+            }
+            return totalAspectRatio / CGFloat(images.count)
+        } else {
+            // 图片数量较多，使用采样计算
+            let step = images.count / maxSampleSize
+            var totalAspectRatio: CGFloat = 0.0
+            var sampleCount = 0
+            
+            for i in stride(from: 0, to: images.count, by: step) {
+                let image = images[i]
+                totalAspectRatio += (image.size.width / image.size.height)
+                sampleCount += 1
+                
+                if sampleCount >= maxSampleSize {
+                    break
+                }
+            }
+            
+            return totalAspectRatio / CGFloat(sampleCount)
+        }
     }
     
     private func getFixedGridRows(for group: DirectoryGroup) -> [FixedGridRow] {
         guard hasReceivedGeometry else { return [] }
         
-        return createFixedGridRows(from: group.images, availableWidth: availableWidth)
+        // 布局缓存优化：只有在宽度或图片数量变化时才重新计算
+        let cacheKey = "\(group.id)-\(availableWidth)"
+        let currentImageCount = group.images.count
+        
+        // 检查是否需要重新计算布局
+        if let cachedRows = layoutCache[cacheKey], 
+           lastLayoutWidth == availableWidth && 
+           lastImageCount == currentImageCount {
+            return cachedRows
+        }
+        
+        // 重新计算布局
+        let rows = createFixedGridRows(from: group.images, availableWidth: availableWidth)
+        
+        // 更新缓存
+        layoutCache[cacheKey] = rows
+        lastLayoutWidth = availableWidth
+        lastImageCount = currentImageCount
+        
+        // 清理过期的缓存（只保留最近几个）
+        if layoutCache.count > ListViewConstants.maxCacheSize {
+            let keysToRemove = Array(layoutCache.keys).prefix(layoutCache.count - ListViewConstants.maxCacheSize)
+            for key in keysToRemove {
+                layoutCache.removeValue(forKey: key)
+            }
+        }
+        
+        return rows
     }
 
     var body: some View {
-        if viewModel.isLoading {
-            loadingStateView
-        } else if let errorMessage = viewModel.errorMessage {
-            errorStateView(errorMessage)
-        } else if viewModel.directoryGroups.isEmpty {
-            emptyStateView
-        } else {
-            GeometryReader { geometry in
-                ScrollView {
-                    ScrollViewReader { proxy in
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(viewModel.directoryGroups) { group in
-                                directorySection(for: group, proxy: proxy)
-                            }
-                            
-                            // 加载更多指示器
-                            if viewModel.canLoadMore {
-                                VStack {
-                                    if viewModel.isLoadingMore {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                    } else {
-                                        Button(action: {
+        GeometryReader { geometry in
+            ScrollView {
+                ScrollViewReader { proxy in
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(viewModel.directoryGroups) { group in
+                            directorySection(for: group, proxy: proxy)
+                        }
+                        
+                        // 加载更多指示器
+                        if viewModel.canLoadMore {
+                            VStack {
+                                if viewModel.isLoadingMore {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Button(action: {
+                                        // 只有在窗口未调整时才触发加载更多
+                                        if !isWindowResizing {
                                             viewModel.loadMoreImages()
-                                        }) {
-                                            Image(systemName: "arrow.down.circle")
-                                                .font(.title2)
-                                                .foregroundColor(.secondary)
                                         }
-                                        .buttonStyle(PlainButtonStyle())
+                                    }) {
+                                        Image(systemName: "arrow.down.circle")
+                                            .font(.title2)
+                                            .foregroundColor(.secondary)
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 20)
-                                .id("load-more-indicator") // 为加载指示器添加ID
-                                .background(
-                                    GeometryReader { geometry in
-                                        Color.clear
-                                            .onAppear {
-                                                // 当加载指示器出现在视图中时触发加载更多
-                                                if viewModel.canLoadMore && !viewModel.isLoadingMore {
-                                                    print("加载指示器出现在视图中，触发自动加载更多")
-                                                    viewModel.loadMoreImages()
-                                                }
-                                            }
-                                            .onChange(of: geometry.frame(in: .global).minY) { minY in
-                                                // 检测指示器是否进入可见区域
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                            .id("load-more-indicator") // 为加载指示器添加ID
+                            .background(
+                                GeometryReader { geometry in
+                                    Color.clear
+                                        .onChange(of: geometry.frame(in: .global).minY) { minY in
+                                            // 检测指示器是否进入可见区域（主要触发机制）
+                                            // 只有在窗口未调整时才触发加载更多
+                                            if !isWindowResizing {
                                                 let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
                                                 if minY < screenHeight && minY > -geometry.size.height {
                                                     if viewModel.canLoadMore && !viewModel.isLoadingMore {
@@ -159,79 +254,61 @@ struct ListView: View {
                                                     }
                                                 }
                                             }
-                                    }
-                                )
-                                .onAppear {
-                                    // 延迟检测，确保指示器完全渲染
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        if viewModel.canLoadMore && !viewModel.isLoadingMore {
-                                            print("加载指示器渲染完成，触发自动加载更多")
-                                            viewModel.loadMoreImages()
                                         }
-                                    }
                                 }
-                                .onChange(of: viewModel.canLoadMore) { canLoadMore in
-                                    // 当canLoadMore状态改变时，检查是否需要自动加载
-                                    if canLoadMore && !viewModel.isLoadingMore {
-                                        // 立即尝试加载一次
-                                        viewModel.loadMoreImages()
-                                        
-                                        // 延迟再次检查，确保加载触发
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                            if viewModel.canLoadMore && !viewModel.isLoadingMore {
-                                                viewModel.loadMoreImages()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.leading, 6)  // 左侧间距
-                        .onReceive(NotificationCenter.default.publisher(for: UnifiedWindowManager.Notification.scrollToImage)) { notification in
-                            if let userInfo = notification.userInfo,
-                               let index = userInfo["index"] as? Int {
-                                UnifiedWindowManager.shared.handleScrollToIndex(index)
-                            }
-                        }
-                        .onReceive(viewModel.$selectedImages) { selectedImages in
-                            UnifiedWindowManager.shared.handleSelectionChange(selectedImages, images: viewModel.images)
-                        }
-                        .onReceive(UnifiedWindowManager.shared.$shouldScrollToIndex) { targetIndex in
-                            if let index = targetIndex {
-                                performPhasedScroll(to: index, proxy: proxy)
-                            }
-                        }
-                        .onAppear {
-                            viewModel.setScrollProxy(proxy)
-                        }
-                        .onDisappear {
-                            viewModel.clearScrollProxy()
+                            )
                         }
                     }
-                }
-                .onAppear {
-                    if !hasReceivedGeometry {
-                        availableWidth = geometry.size.width
-                        hasReceivedGeometry = true
+                    .padding(.leading, 6)  // 左侧间距
+                    .onReceive(NotificationCenter.default.publisher(for: UnifiedWindowManager.Notification.scrollToImage)) { notification in
+                        if let userInfo = notification.userInfo,
+                           let index = userInfo["index"] as? Int {
+                            UnifiedWindowManager.shared.handleScrollToIndex(index)
+                        }
                     }
-                }
-                .onChange(of: geometry.size.width) { newWidth in
-                    // 添加这行检查
-                    guard !viewModel.isSingleViewMode else { return }
-
-                    availableWidth = newWidth
-                    hasReceivedGeometry = true
+                    .onReceive(viewModel.$selectedImages) { selectedImages in
+                        UnifiedWindowManager.shared.handleSelectionChange(selectedImages, images: viewModel.images)
+                    }
+                    .onReceive(UnifiedWindowManager.shared.$shouldScrollToIndex) { targetIndex in
+                        if let index = targetIndex {
+                            performPhasedScroll(to: index, proxy: proxy)
+                        }
+                    }
+                    .onAppear {
+                        viewModel.setScrollProxy(proxy)
+                    }
+                    .onDisappear {
+                        viewModel.clearScrollProxy()
+                    }
                 }
             }
             .onAppear {
-                if !viewModel.images.isEmpty && viewModel.selectedImages.isEmpty {
-                    viewModel.toggleImageSelection(at: 0)
+                if !hasReceivedGeometry {
+                    availableWidth = geometry.size.width
+                    hasReceivedGeometry = true
                 }
             }
-            .background(
-                UnifiedKeyboardListener(viewModel: viewModel, mode: .list)
-            )
+            .onChange(of: geometry.size) { newSize in
+                // 添加这行检查
+                guard !viewModel.isSingleViewMode else { return }
+
+                // 检测窗口大小是否发生显著变化（避免微小变化触发重算）
+                let widthChangedSignificantly = abs(newSize.width - lastWindowSize.width) > ListViewConstants.resizeDetectionThreshold
+                let heightChangedSignificantly = abs(newSize.height - lastWindowSize.height) > ListViewConstants.resizeDetectionThreshold
+                
+                if widthChangedSignificantly || heightChangedSignificantly {
+                    handleWindowResizeStart(newSize: newSize)
+                }
+            }
         }
+        .onAppear {
+            if !viewModel.images.isEmpty && viewModel.selectedImages.isEmpty {
+                viewModel.toggleImageSelection(at: 0)
+            }
+        }
+        .background(
+            UnifiedKeyboardListener(viewModel: viewModel, mode: .list)
+        )
     }
 
     private func directorySection(for group: DirectoryGroup, proxy: ScrollViewProxy) -> some View {
@@ -287,21 +364,17 @@ struct ListView: View {
         
         // 简化重试机制：立即滚动一次，0.1秒后重试一次
         withAnimation {
-            print("开始滚动到索引 \(index)")
             proxy.scrollTo(targetImage.id, anchor: .center)
-        }
-        
+        }       
         // 0.1秒后重试一次（防止目标项未渲染）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation {
-                print("重试滚动到索引 \(index)")
                 proxy.scrollTo(targetImage.id, anchor: .center)
             }
         }
         
         // 0.5秒后清理滚动状态
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("清理滚动状态 \(index)")
             UnifiedWindowManager.shared.shouldScrollToIndex = nil
         }
     }
@@ -314,80 +387,7 @@ struct ListView: View {
         viewModel.selectDirectory()
     }
     
-    @State private var isPressed = false
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "photo.on.rectangle")
-                .font(.system(size: 64))
-                .foregroundColor(.secondary)
-                .brightness(isPressed ? -0.2 : 0) // 点击时变暗
-            
-            Text("点击选择目录")
-                .font(.title2)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-            
-            Text("支持 JPG、PNG、GIF 等常见图片格式")
-                .font(.caption)
-                .foregroundColor(Color.secondary.opacity(0.7))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle()) // 使整个区域可点击
-        .scaleEffect(isPressed ? 0.95 : 1.0) // 点击时轻微缩小
-        .animation(.easeInOut(duration: 0.1), value: isPressed) // 添加动画
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeInOut(duration: 0.05)) {
-                    isPressed = false
-                }
-                selectDirectory()
-            }
-        }
-    }
-    
-    private var loadingStateView: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-                .scaleEffect(1.5)
-            
-            Text("正在加载图片...")
-                .font(.title2)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    private func errorStateView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 64))
-                .foregroundColor(.orange)
-            
-            Text("加载失败")
-                .font(.title2)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-            
-            Text(message)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button("重新选择目录") {
-                viewModel.currentDirectory = nil
-                viewModel.errorMessage = nil
-            }
-            .buttonStyle(.bordered)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+
     
     private func handleImageClick(_ image: ImageItem) {
         guard let index = viewModel.images.firstIndex(where: { $0.id == image.id }) else { return }
@@ -403,6 +403,28 @@ struct ListView: View {
             viewModel.isSingleViewMode = true
         }
     }
+    
+    // 统一的窗口大小变化处理方法，避免重复的状态管理逻辑
+    private func handleWindowResizeStart(newSize: CGSize) {
+        // 窗口大小发生显著变化，标记为正在调整
+        isWindowResizing = true
+        
+        // 立即更新布局宽度，确保界面实时响应
+        availableWidth = newSize.width
+        hasReceivedGeometry = true
+        
+        // 取消之前的结束检测计时器
+        resizeEndTimer?.invalidate()
+        
+        // 设置新的结束检测计时器（无变化视为调整结束）
+        resizeEndTimer = Timer.scheduledTimer(withTimeInterval: ListViewConstants.resizeEndDelay, repeats: false) { _ in
+            // 窗口调整结束，仅标记调整状态结束
+            isWindowResizing = false
+            print("窗口拉伸结束，可以触发加载操作")
+        }
+        
+        lastWindowSize = newSize
+    }
 }
 
 struct SmartImageThumbnailView: View {
@@ -414,20 +436,23 @@ struct SmartImageThumbnailView: View {
     let onDoubleClick: () -> Void
     let viewModel: ImageBrowserViewModel // 添加ViewModel引用
     
+    // 优化：使用ViewModel统一管理缩略图状态，避免重复的状态管理
     @State private var thumbnail: NSImage?
-    @State private var isLoading = false
     
     var body: some View {
         Group {
             if let thumbnail = thumbnail {
                 imageView(thumbnail)
-            } else if isLoading {
-                loadingView
             } else {
+                // 统一使用placeholder视图，避免重复的加载状态管理
                 placeholderView
             }
         }
         .onAppear {
+            loadThumbnail()
+        }
+        .onChange(of: imageItem.id) { _ in
+            // 当图片项发生变化时重新加载缩略图
             loadThumbnail()
         }
     }
@@ -439,15 +464,14 @@ struct SmartImageThumbnailView: View {
             .aspectRatio(contentMode: .fill)
             .frame(width: size.width, height: size.height)
             .clipped()
-            .cornerRadius(4)
+            .cornerRadius(ListViewConstants.cornerRadius)
             .overlay(selectedBorder)
-            .scaleEffect(isSelected ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isSelected)
+            .scaleEffect(isSelected ? ListViewConstants.selectedScale : 1.0)
+            .animation(.easeInOut(duration: ListViewConstants.selectionAnimationDuration), value: isSelected)
             .gesture(
                 TapGesture()
                     .onEnded { _ in
                         onTap()
-                        
                         if NSApp.currentEvent?.clickCount == 2 {
                             onDoubleClick()
                         }
@@ -464,33 +488,25 @@ struct SmartImageThumbnailView: View {
     
     @ViewBuilder
     private var selectedBorder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .stroke(isSelected ? Color.white : Color.clear, lineWidth: 2)
+        RoundedRectangle(cornerRadius: ListViewConstants.cornerRadius)
+            .stroke(isSelected ? Color.white : Color.clear, lineWidth: ListViewConstants.selectedBorderWidth)
     }
     
     @ViewBuilder
     private var hoverEffect: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.black.opacity(0.05))
+        RoundedRectangle(cornerRadius: ListViewConstants.cornerRadius)
+            .fill(Color.black.opacity(ListViewConstants.hoverOpacity))
             .opacity(isSelected ? 1.0 : 0.0)
-    }
-    
-    @ViewBuilder
-    private var loadingView: some View {
-        ProgressView()
-            .frame(width: size.width, height: size.height)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(4)
     }
     
     @ViewBuilder
     private var placeholderView: some View {
         Image(systemName: "photo")
-            .font(.system(size: min(size.width, size.height) * 0.3))
+            .font(.system(size: min(size.width, size.height) * ListViewConstants.placeholderIconScale))
             .foregroundColor(.gray)
             .frame(width: size.width, height: size.height)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(4)
+            .background(Color.gray.opacity(ListViewConstants.placeholderBackgroundOpacity))
+            .cornerRadius(ListViewConstants.cornerRadius)
     }
     
     @ViewBuilder
@@ -526,9 +542,11 @@ struct SmartImageThumbnailView: View {
     
     @MainActor
     private func loadThumbnail() {
+        // 重置缩略图状态，避免显示旧的缩略图
+        thumbnail = nil
+        
         viewModel.loadThumbnail(for: imageItem, size: size) { thumbnail in
             self.thumbnail = thumbnail
-            self.isLoading = false
         }
     }
 }
