@@ -1,6 +1,58 @@
 import SwiftUI
 import AppKit
 
+/// UnifiedFocusManager常量定义
+struct UnifiedFocusManagerConstants {
+    /// 键盘事件相关常量
+    struct KeyEvents {
+        /// 空格键键码 - 播放/暂停
+        static let spaceKeyCode: UInt16 = 49
+        /// 回车键键码 - 返回列表视图
+        static let returnKeyCode: UInt16 = 36
+        /// 上箭头键码 - 上一张图片
+        static let upArrowKeyCode: UInt16 = 126
+        /// 下箭头键码 - 下一张图片
+        static let downArrowKeyCode: UInt16 = 125
+        /// 右箭头键码 - 下一张图片
+        static let rightArrowKeyCode: UInt16 = 124
+        /// 左箭头键码 - 上一张图片
+        static let leftArrowKeyCode: UInt16 = 123
+        
+        /// 回车键字符 - 进入单张浏览模式
+        static let returnCharacter = "\r"
+        /// 上箭头Unicode字符
+        static let upArrowCharacter = "\u{F700}"
+        /// 下箭头Unicode字符
+        static let downArrowCharacter = "\u{F701}"
+        /// 左箭头Unicode字符
+        static let leftArrowCharacter = "\u{F703}"
+        /// 右箭头Unicode字符
+        static let rightArrowCharacter = "\u{F702}"
+        /// 减号键字符 - 缩小缩略图
+        static let minusCharacter = "-"
+        /// 等号键字符 - 放大缩略图
+        static let equalsCharacter = "="
+    }
+    
+    /// 滚动事件相关常量
+    struct ScrollEvents {
+        /// 滚轮灵敏度阈值
+        static let wheelSensitivity: CGFloat = 0.5
+    }
+    
+    /// 延迟时间相关常量
+    struct Delays {
+        /// 设置焦点通知延迟时间（秒）
+        static let setFocusDelay: Double = 0.1
+    }
+    
+    /// 通知名称常量
+    struct Notifications {
+        /// 设置焦点到列表视图的通知名称
+        static let setFocusToListView = "SetFocusToListView"
+    }
+}
+
 enum ViewMode {
     case list
     case single
@@ -34,7 +86,7 @@ class UnifiedFocusView: NSView {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleSetFocusNotification),
-            name: NSNotification.Name("SetFocusToListView"),
+            name: NSNotification.Name(UnifiedFocusManagerConstants.Notifications.setFocusToListView),
             object: nil
         )
     }
@@ -42,7 +94,7 @@ class UnifiedFocusView: NSView {
     @objc private func handleSetFocusNotification() {
         guard let viewModel = viewModel, !viewModel.isSingleViewMode else { return }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + UnifiedFocusManagerConstants.Delays.setFocusDelay) {
             FocusManagerHelper.safeSetFirstResponderWithCheck(self)
         }
     }
@@ -74,18 +126,18 @@ class UnifiedFocusView: NSView {
         let keyCode = event.keyCode
         
         switch keyCode {
-        case 49:  // 空格键 - 播放/暂停
+        case UnifiedFocusManagerConstants.KeyEvents.spaceKeyCode:  // 空格键 - 播放/暂停
             viewModel.toggleAutoPlay()
-        case 36:  // 回车键 - 返回列表视图
+        case UnifiedFocusManagerConstants.KeyEvents.returnKeyCode:  // 回车键 - 返回列表视图
             returnToListView(viewModel: viewModel)
-        case 126:  // 上箭头 - 上一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.upArrowKeyCode:  // 上箭头 - 上一张图片
             break
-        case 125:  // 下箭头 - 下一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.downArrowKeyCode:  // 下箭头 - 下一张图片
             break
-        case 124:  // 右箭头 - 下一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.rightArrowKeyCode:  // 右箭头 - 下一张图片
             viewModel.stopAutoPlay()
             viewModel.nextImage()
-        case 123:  // 左箭头 - 上一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.leftArrowKeyCode:  // 左箭头 - 上一张图片
             viewModel.stopAutoPlay()
             viewModel.previousImage()
         default:
@@ -105,7 +157,7 @@ class UnifiedFocusView: NSView {
         }
         
         switch characters {
-        case "\r":  // 回车键 - 进入单张浏览模式
+        case UnifiedFocusManagerConstants.KeyEvents.returnCharacter:  // 回车键 - 进入单张浏览模式
             if !viewModel.selectedImages.isEmpty {
                 if let firstSelectedId = viewModel.selectedImages.first,
                    let index = viewModel.images.firstIndex(where: { $0.id == firstSelectedId }) {
@@ -114,18 +166,18 @@ class UnifiedFocusView: NSView {
             } else if !viewModel.images.isEmpty {
                 viewModel.selectImage(at: viewModel.currentImageIndex)
             }
-        case "\u{F700}":  // 上箭头
+        case UnifiedFocusManagerConstants.KeyEvents.upArrowCharacter:  // 上箭头
             viewModel.navigateSelection(direction: .right)  // 右箭头向右选择
-        case "\u{F701}":  // 下箭头
+        case UnifiedFocusManagerConstants.KeyEvents.downArrowCharacter:  // 下箭头
             viewModel.navigateSelection(direction: .left)  // 左箭头向左选择
-        case "\u{F703}":  // 左箭头
+        case UnifiedFocusManagerConstants.KeyEvents.leftArrowCharacter:  // 左箭头
             break
-        case "\u{F702}":  // 右箭头
+        case UnifiedFocusManagerConstants.KeyEvents.rightArrowCharacter:  // 右箭头
             break
-        case "-":  // 减号键 - 缩小缩略图
-            viewModel.handleKeyPress("-")
-        case "=":  // 等号键 - 放大缩略图
-            viewModel.handleKeyPress("=")
+        case UnifiedFocusManagerConstants.KeyEvents.minusCharacter:  // 减号键 - 缩小缩略图
+            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.minusCharacter)
+        case UnifiedFocusManagerConstants.KeyEvents.equalsCharacter:  // 等号键 - 放大缩略图
+            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.equalsCharacter)
         default:
             super.keyDown(with: event)
         }
@@ -154,7 +206,7 @@ class UnifiedFocusView: NSView {
         
         let deltaY = event.scrollingDeltaY
         
-        let sensitivity: CGFloat = 0.5
+        let sensitivity: CGFloat = UnifiedFocusManagerConstants.ScrollEvents.wheelSensitivity
         
         if deltaY > sensitivity {
             viewModel.previousImage()
