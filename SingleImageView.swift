@@ -33,7 +33,6 @@ struct SingleImageViewConstants {
 struct SingleImageView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
     @State private var scale: CGFloat = SingleImageViewConstants.initialScale
-    @State private var offset: CGSize = .zero
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -42,7 +41,6 @@ struct SingleImageView: View {
                 .ignoresSafeArea()
             if let currentImage = currentImage {
                 imageView(for: currentImage)
-                    .offset(offset)
             } else {
                 Text("没有图片")
                     .font(.title)
@@ -92,11 +90,7 @@ struct SingleImageView: View {
                 }
         )
         .onAppear {
-
-            if let currentImage = self.currentImage {
-                UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
-                viewModel.isFirstTimeInSingleView = false
-            }
+            adjustWindowForCurrentImage()
             //实现窗口可拖
             if controlActiveState == .key {
                 NSApp.keyWindow?.isMovableByWindowBackground = true
@@ -105,10 +99,7 @@ struct SingleImageView: View {
         .onChange(of: viewModel.currentImageIndex) { _ in
             //修改窗口大小,如果是第一张
             if viewModel.isFirstTimeInSingleView {
-                if let currentImage = self.currentImage {
-                    UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
-                }
-                viewModel.isFirstTimeInSingleView = false
+                adjustWindowForCurrentImage()
             }
             
             // 检测是否接近图片列表末尾，自动加载更多图片
@@ -120,6 +111,13 @@ struct SingleImageView: View {
         }        
     }
     
+    private func adjustWindowForCurrentImage() {
+        if let currentImage = self.currentImage {
+            UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
+            viewModel.isFirstTimeInSingleView = false
+        }
+    }
+    
     private var currentImage: ImageItem? {
         guard viewModel.images.indices.contains(viewModel.currentImageIndex) else {
             return nil
@@ -128,8 +126,7 @@ struct SingleImageView: View {
     }
     
     private func checkAndLoadMoreIfNeeded() {
-        // 当浏览到接近列表末尾时自动加载更多图片
-        let threshold = SingleImageViewConstants.loadMoreThreshold // 距离末尾5张图片时触发加载
+        let threshold = SingleImageViewConstants.loadMoreThreshold
         let currentIndex = viewModel.currentImageIndex
         let totalImages = viewModel.images.count
         
@@ -157,15 +154,10 @@ struct SingleImageView: View {
                     .contrast(SingleImageViewConstants.contrastEnhancement) //对比度和亮度
                     .brightness(SingleImageViewConstants.brightnessAdjustment)    
                     .scaleEffect(scale)
-                    .onAppear {
-
-                    }
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         withAnimation(.linear(duration: 0)) {
                             scale = SingleImageViewConstants.initialScale
-                        }                        
-                        // 当切换图片时重置缩放并重新触发动画
-                        scale = SingleImageViewConstants.initialScale
+                        }
                         withAnimation(.easeOut(duration: viewModel.autoPlayInterval-2)) {
                             scale = SingleImageViewConstants.targetScale
                         }

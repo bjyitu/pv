@@ -46,6 +46,41 @@ struct UnifiedFocusManagerConstants {
         static let setFocusDelay: Double = 0.1
     }
     
+    /// 焦点管理相关方法
+    struct FocusMethods {
+        /// 安全设置第一响应者
+        /// - Parameters:
+        ///   - view: 要设置焦点的视图
+        ///   - checkCurrentResponder: 是否检查当前响应者状态，默认为true（推荐）
+        static func safeSetFirstResponder(_ view: NSView, checkCurrentResponder: Bool = true) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Delays.setFocusDelay) {
+                if checkCurrentResponder {
+                    // 带检查的版本：只有当视图不是当前第一响应者时才设置
+                    if view.acceptsFirstResponder && view.window?.firstResponder != view {
+                    view.window?.makeFirstResponder(view)
+                }
+                } else {
+                    // 无检查的版本：直接设置第一响应者
+                    view.window?.makeFirstResponder(view)
+                }
+            }
+        }
+        
+        // 为向后兼容性保留的便捷方法
+        
+        /// 安全设置第一响应者（无检查）
+        /// - Parameter view: 要设置焦点的视图
+        static func safeSetFirstResponder(_ view: NSView) {
+            safeSetFirstResponder(view, checkCurrentResponder: false)
+        }
+        
+        /// 安全设置第一响应者（带检查）
+        /// - Parameter view: 要设置焦点的视图
+        static func safeSetFirstResponderWithCheck(_ view: NSView) {
+            safeSetFirstResponder(view, checkCurrentResponder: true)
+        }
+    }
+    
     /// 通知名称常量
     struct Notifications {
         /// 设置焦点到列表视图的通知名称
@@ -81,7 +116,7 @@ class UnifiedFocusView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         
-        FocusManagerHelper.safeSetFirstResponderWithCheck(self)
+        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
         
         NotificationCenter.default.addObserver(
             self,
@@ -95,7 +130,7 @@ class UnifiedFocusView: NSView {
         guard let viewModel = viewModel, !viewModel.isSingleViewMode else { return }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + UnifiedFocusManagerConstants.Delays.setFocusDelay) {
-            FocusManagerHelper.safeSetFirstResponderWithCheck(self)
+            UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
         }
     }
     
@@ -220,7 +255,7 @@ class UnifiedFocusView: NSView {
     }
     
     override func mouseDown(with event: NSEvent) {
-        FocusManagerHelper.safeSetFirstResponderWithCheck(self)
+        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
         super.mouseDown(with: event)
     }
     

@@ -1,6 +1,18 @@
 import SwiftUI
 import AppKit
 
+/// 滚动选项配置，用于控制滚动行为
+struct ScrollOptions: OptionSet {
+    let rawValue: Int
+    
+    static let `default` = ScrollOptions([])
+    static let force = ScrollOptions(rawValue: 1 << 0)  // 强制滚动，清除现有滚动状态
+    static let delayed = ScrollOptions(rawValue: 1 << 1) // 延迟滚动
+    
+    static let immediate: ScrollOptions = [] // 立即滚动（默认）
+    static let forceDelayed: ScrollOptions = [.force, .delayed] // 强制延迟滚动
+}
+
 /// 统一窗口管理器常量定义
 struct UnifiedWindowManagerConstants {
     /// 窗口初始化延迟时间（秒），用于确保窗口正确配置
@@ -38,19 +50,19 @@ struct UnifiedWindowManagerConstants {
     
     /// 窗口边距配置结构体
     struct WindowMargins {
-        /// 超宽图片（宽高比 > 2.0）的边距配置
-        static let ultraWide: (horizontal: CGFloat, vertical: CGFloat) = (40, 60)
+        // /// 超宽图片（宽高比 > 2.0）的边距配置
+        // static let ultraWide: (horizontal: CGFloat, vertical: CGFloat) = (40, 60)
         
-        /// 宽图片（宽高比 > 1.5）的边距配置
-        static let wide: (horizontal: CGFloat, vertical: CGFloat) = (30, 50)
+        // /// 宽图片（宽高比 > 1.5）的边距配置
+        // static let wide: (horizontal: CGFloat, vertical: CGFloat) = (30, 50)
         
-        /// 窄图片（宽高比 < 0.8）的边距配置
-        static let narrow: (horizontal: CGFloat, vertical: CGFloat) = (50, 30)
+        // /// 窄图片（宽高比 < 0.8）的边距配置
+        // static let narrow: (horizontal: CGFloat, vertical: CGFloat) = (50, 30)
         
-        /// 超窄图片（宽高比 < 0.5）的边距配置
-        static let ultraNarrow: (horizontal: CGFloat, vertical: CGFloat) = (60, 40)
+        // /// 超窄图片（宽高比 < 0.5）的边距配置
+        // static let ultraNarrow: (horizontal: CGFloat, vertical: CGFloat) = (60, 40)
         
-        /// 正常图片（宽高比 0.8-1.5）的边距配置
+        // /// 正常图片（宽高比 0.8-1.5）的边距配置
         static let normal: (horizontal: CGFloat, vertical: CGFloat) = (40, 40)
     }
     
@@ -68,12 +80,11 @@ class UnifiedWindowManager: ObservableObject {
     @Published var currentTitle: String = UnifiedWindowManagerConstants.defaultWindowTitle
     @Published var currentImageSize: CGSize?
     @Published var previousWindowFrame: NSRect?
-    
-    private let minWindowWidth: CGFloat = UnifiedWindowManagerConstants.minWindowWidth
-    private let minWindowHeight: CGFloat = UnifiedWindowManagerConstants.minWindowHeight
-    private let maxScreenUsageRatio: CGFloat = UnifiedWindowManagerConstants.maxScreenUsageRatio
-    
+
     private var currentGroupId: String?
+    
+    // 窗口尺寸缓存
+    @MainActor private var recordedListWindowSizes: [String: CGSize] = [:]
     
     private init() {
         setupNotificationObservers()
@@ -134,61 +145,23 @@ class UnifiedWindowManager: ObservableObject {
     
     
     func calculateOptimalWindowSize(for imageSize: CGSize, screen: NSScreen) -> NSRect {
-        let screenSize = screen.visibleFrame.size
         let aspectRatio = imageSize.width / imageSize.height
+        let margins = UnifiedWindowManagerConstants.WindowMargins.normal
         
-        // 简化处理：根据宽高比设置不同的边距
-        let margins: (horizontal: CGFloat, vertical: CGFloat)
-        if aspectRatio > 2.0 {
-            margins = UnifiedWindowManagerConstants.WindowMargins.ultraWide // 超宽图片
-        } else if aspectRatio > 1.5 {
-            margins = UnifiedWindowManagerConstants.WindowMargins.wide // 宽图片
-        } else if aspectRatio < 0.5 {
-            margins = UnifiedWindowManagerConstants.WindowMargins.ultraNarrow // 超窄图片
-        } else if aspectRatio < 0.8 {
-            margins = UnifiedWindowManagerConstants.WindowMargins.narrow // 窄图片
-        } else {
-            margins = UnifiedWindowManagerConstants.WindowMargins.normal // 正常图片
-        }
+        // 使用辅助函数计算最大可用尺寸
+        let maxUsableSize = calculateMaxUsableSize(in: screen, margins: margins)
         
+        // 使用辅助函数计算基于宽高比的窗口尺寸
+        let windowSize = calculateWindowSizeForAspectRatio(aspectRatio, maxSize: maxUsableSize)
         
-        let maxUsableWidth = screenSize.width * maxScreenUsageRatio - margins.horizontal
-        let maxUsableHeight = screenSize.height * maxScreenUsageRatio - margins.vertical
-        
-        let windowSize: CGSize
-        
-        let widthBasedHeight = maxUsableWidth / aspectRatio
-        let widthBasedSize = CGSize(width: maxUsableWidth, height: widthBasedHeight)
-        
-        let heightBasedWidth = maxUsableHeight * aspectRatio
-        let heightBasedSize = CGSize(width: heightBasedWidth, height: maxUsableHeight)
-        
-        if widthBasedSize.height <= maxUsableHeight {
-            windowSize = widthBasedSize
-        } else if heightBasedSize.width <= maxUsableWidth {
-            windowSize = heightBasedSize
-        } else {
-            let widthRatio = maxUsableWidth / imageSize.width
-            let heightRatio = maxUsableHeight / imageSize.height
-            let scaleFactor = min(widthRatio, heightRatio)
-            
-            windowSize = CGSize(
-                width: imageSize.width * scaleFactor,
-                height: imageSize.height * scaleFactor
-            )
-        }
-        
+        // 应用最小窗口尺寸限制
         let finalSize = CGSize(
-            width: max(windowSize.width + margins.horizontal, minWindowWidth),
-            height: max(windowSize.height + margins.vertical, minWindowHeight)
+            width: max(windowSize.width + margins.horizontal, UnifiedWindowManagerConstants.minWindowWidth),
+            height: max(windowSize.height + margins.vertical, UnifiedWindowManagerConstants.minWindowHeight)
         )
         
-        let targetX = (screenSize.width - finalSize.width) / 2 + screen.visibleFrame.origin.x
-        let targetY = (screenSize.height - finalSize.height) / 2 + screen.visibleFrame.origin.y
-        
-        let result = NSRect(origin: NSPoint(x: targetX, y: targetY), size: finalSize)
-        
-        return result
+        // 使用辅助函数计算中心位置
+        return calculateCenteredFrame(for: finalSize, in: screen)
     }
     
     func calculateDefaultWindowSize(for screen: NSScreen) -> NSRect {
@@ -199,16 +172,59 @@ class UnifiedWindowManager: ObservableObject {
         let targetWidth = min(defaultWidth, screenSize.width * UnifiedWindowManagerConstants.WindowConfiguration.defaultScreenUsageRatio)
         let targetHeight = min(defaultHeight, screenSize.height * UnifiedWindowManagerConstants.WindowConfiguration.defaultScreenUsageRatio)
         
-        let targetX = (screenSize.width - targetWidth) / 2 + screen.visibleFrame.origin.x
-        let targetY = (screenSize.height - targetHeight) / 2 + screen.visibleFrame.origin.y
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
         
-        return NSRect(
-            origin: NSPoint(x: targetX, y: targetY),
-            size: NSSize(width: targetWidth, height: targetHeight)
-        )
+        // 使用辅助函数计算中心位置
+        return calculateCenteredFrame(for: targetSize, in: screen)
     }
     
     
+    // MARK: - 统一的窗口设置接口
+    
+    /// 设置窗口框架
+    /// - Parameters:
+    ///   - frame: 目标窗口框架
+    ///   - animated: 是否启用动画
+    func setWindowFrame(_ frame: NSRect, animated: Bool = false) {
+        guard let window = getCurrentWindow() else { return }
+        window.setFrame(frame, display: true, animate: animated)
+    }
+    
+    /// 设置窗口大小（保持当前位置）
+    /// - Parameters:
+    ///   - size: 目标窗口大小
+    ///   - animated: 是否启用动画
+    func setWindowSize(_ size: CGSize, animated: Bool = false) {
+        guard let window = getCurrentWindow() else { return }
+        let currentFrame = window.frame
+        let targetFrame = NSRect(origin: currentFrame.origin, size: size)
+        setWindowFrame(targetFrame, animated: animated)
+    }
+    
+    /// 设置窗口大小并居中显示
+    /// - Parameters:
+    ///   - size: 目标窗口大小
+    ///   - animated: 是否启用动画
+    func setWindowSizeCentered(_ size: CGSize, animated: Bool = false) {
+        guard let screen = getMainScreen() else { return }
+        let targetFrame = calculateCenteredFrame(for: size, in: screen)
+        setWindowFrame(targetFrame, animated: animated)
+    }
+    
+    /// 设置默认窗口大小并居中显示
+    /// - Parameters:
+    ///   - animated: 是否启用动画
+    func setToDefaultSize(animated: Bool = false) {
+        guard let screen = getMainScreen() else { return }
+        let defaultFrame = calculateDefaultWindowSize(for: screen)
+        setWindowFrame(defaultFrame, animated: animated)
+    }
+    
+    /// 根据图片尺寸调整窗口大小
+    /// - Parameters:
+    ///   - imageSize: 图片尺寸
+    ///   - animated: 是否启用动画
+    ///   - shouldCenter: 是否居中显示
     func adjustWindowForImage(_ imageSize: CGSize, animated: Bool = false, shouldCenter: Bool = true) {
         guard let screen = getMainScreen() else { return }
         guard let window = getCurrentWindow() else { return }
@@ -220,41 +236,54 @@ class UnifiedWindowManager: ObservableObject {
             finalFrame = targetFrame
         } else {
             let currentFrame = window.frame
-            finalFrame = NSRect(
-                origin: currentFrame.origin,
-                size: targetFrame.size
-            )
+            finalFrame = NSRect(origin: currentFrame.origin, size: targetFrame.size)
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) { [weak window] in
-            window?.setFrame(finalFrame, display: true, animate: false)  // 动画隔离测试：禁用窗口动画
-        }
-        
+        setWindowFrame(finalFrame, animated: animated)
         currentImageSize = imageSize
     }
     
-    func setToDefaultSize() {
-        guard let screen = getMainScreen() else { return }
-        let defaultFrame = calculateDefaultWindowSize(for: screen)
-        setWindowFrame(defaultFrame)
+    // 计算窗口在屏幕中心的位置
+    private func calculateCenteredFrame(for size: CGSize, in screen: NSScreen) -> NSRect {
+        let screenSize = screen.visibleFrame.size
+        let targetX = (screenSize.width - size.width) / 2 + screen.visibleFrame.origin.x
+        let targetY = (screenSize.height - size.height) / 2 + screen.visibleFrame.origin.y
+        
+        return NSRect(origin: NSPoint(x: targetX, y: targetY), size: size)
     }
     
-    func setWindowSize(_ size: CGSize) {
-        guard let screen = getMainScreen() else { return }
-        let screenFrame = screen.visibleFrame
-        let targetFrame = NSRect(
-            x: screenFrame.minX + (screenFrame.width - size.width) / 2,
-            y: screenFrame.minY + (screenFrame.height - size.height) / 2,
-            width: size.width,
-            height: size.height
-        )
-        setWindowFrame(targetFrame)
+    // 计算最大可用尺寸（考虑屏幕使用比例和边距）
+    private func calculateMaxUsableSize(in screen: NSScreen, margins: (horizontal: CGFloat, vertical: CGFloat)) -> CGSize {
+        let screenSize = screen.visibleFrame.size
+        let maxUsableWidth = screenSize.width * UnifiedWindowManagerConstants.maxScreenUsageRatio - margins.horizontal
+        let maxUsableHeight = screenSize.height * UnifiedWindowManagerConstants.maxScreenUsageRatio - margins.vertical
+        
+        return CGSize(width: maxUsableWidth, height: maxUsableHeight)
     }
     
-    // 统一的窗口框架设置方法，避免重复的窗口获取和设置逻辑
-    private func setWindowFrame(_ frame: NSRect) {
-        guard let window = getCurrentWindow() else { return }
-        window.setFrame(frame, display: true, animate: false)  // 动画隔离测试：禁用窗口动画
+    // 计算基于宽高比的窗口尺寸
+    private func calculateWindowSizeForAspectRatio(_ aspectRatio: CGFloat, maxSize: CGSize) -> CGSize {
+        let widthBasedHeight = maxSize.width / aspectRatio
+        let widthBasedSize = CGSize(width: maxSize.width, height: widthBasedHeight)
+        
+        let heightBasedWidth = maxSize.height * aspectRatio
+        let heightBasedSize = CGSize(width: heightBasedWidth, height: maxSize.height)
+        
+        if widthBasedSize.height <= maxSize.height {
+            return widthBasedSize
+        } else if heightBasedSize.width <= maxSize.width {
+            return heightBasedSize
+        } else {
+            // 如果两种方式都不合适，使用缩放因子
+            let widthRatio = maxSize.width / (maxSize.width * aspectRatio)
+            let heightRatio = maxSize.height / (maxSize.height / aspectRatio)
+            let scaleFactor = min(widthRatio, heightRatio)
+            
+            return CGSize(
+                width: maxSize.width * aspectRatio * scaleFactor,
+                height: maxSize.height / aspectRatio * scaleFactor
+            )
+        }
     }
     
     
@@ -271,15 +300,15 @@ class UnifiedWindowManager: ObservableObject {
         
         let currentSize = CGSize(width: window.frame.width, height: window.frame.height)
         
-        UnifiedCacheManager.shared.setRecordedListWindowSize(for: groupId, size: currentSize)
+        setRecordedListWindowSize(for: groupId, size: currentSize)
     }
     
     func restoreListWindowSize(groupId: String? = nil) {
         let groupId = groupId ?? currentGroupId
         guard let groupId = groupId else { return }
         
-        if let cachedSize = UnifiedCacheManager.shared.getRecordedListWindowSize(for: groupId) {
-            setWindowSize(cachedSize)
+        if let cachedSize = getRecordedListWindowSize(for: groupId) {
+            setWindowSizeCentered(cachedSize)
         }
     }
     
@@ -290,8 +319,7 @@ class UnifiedWindowManager: ObservableObject {
     
     func restorePreviousWindowFrame() {
         guard let previousFrame = previousWindowFrame else { return }
-        guard let window = getCurrentWindow() else { return }
-        window.setFrame(previousFrame, display: true, animate: false)  // 动画隔离测试：禁用窗口动画
+        setWindowFrame(previousFrame, animated: false)
     }
     
     
@@ -329,21 +357,38 @@ class UnifiedWindowManager: ObservableObject {
         baseOffset * Self.sharedAppSettings.scrollSensitivity
     }
     
-    func scrollToImage(at index: Int) {
-        performScrollToImage(at: index)
+    // 统一的滚动方法，通过参数控制行为
+    func scrollToImage(at index: Int, 
+                      options: ScrollOptions = .default) {
+        
+        // 检查是否需要强制滚动（清除现有滚动状态）
+        if options.contains(.force) {
+            shouldScrollToIndex = nil
+        }
+        
+        // 检查是否允许滚动（没有进行中的滚动请求）
+        guard options.contains(.force) || shouldScrollToIndex == nil else {
+            return
+        }
+        
+        // 设置滚动状态
+        shouldScrollToIndex = index
+        currentScrollPosition = index
+        addToScrollHistory(index)
+        
+        // 处理延迟滚动
+        if options.contains(.delayed) {
+            let delay = options.contains(.force) ? 
+                UnifiedWindowManagerConstants.forceScrollDelay : 0.1
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.objectWillChange.send()
+            }
+        }
     }
     
     func verifyScrollExecution(at index: Int) -> Bool {
         return shouldScrollToIndex == nil
-    }
-    
-    func forceScrollToImage(at index: Int) {
-        shouldScrollToIndex = nil
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + UnifiedWindowManagerConstants.forceScrollDelay) { [weak self] in
-            self?.performScrollToImage(at: index)
-            self?.objectWillChange.send()
-        }
     }
     
     func addToScrollHistory(_ index: Int) {
@@ -364,19 +409,6 @@ class UnifiedWindowManager: ObservableObject {
     func clearScrollHistory() {
         scrollHistory.removeAll()
         currentScrollPosition = nil
-    }
-    
-    // 统一的滚动执行方法，避免重复的滚动状态设置逻辑
-    func performScrollToImage(at index: Int, position: ScrollPosition = .center) {
-        shouldScrollToIndex = index
-        currentScrollPosition = index
-        addToScrollHistory(index)
-    }
-    
-    func handleScrollToIndex(_ targetIndex: Int) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.performScrollToImage(at: targetIndex, position: .center)
-        }
     }
     
     func handleSelectionChange(_ selectedImages: Set<UUID>, images: [ImageItem]) {
@@ -425,6 +457,40 @@ class UnifiedWindowManager: ObservableObject {
     
     func setCurrentGroupId(_ groupId: String) {
         self.currentGroupId = groupId
+    }
+    
+    // MARK: - 窗口尺寸缓存管理
+    
+    /// 设置记录的列表窗口尺寸
+    /// - Parameters:
+    ///   - groupId: 分组标识符
+    ///   - size: 窗口尺寸
+    func setRecordedListWindowSize(for groupId: String, size: CGSize) {
+        Task { @MainActor in
+            recordedListWindowSizes[groupId] = size
+        }
+    }
+    
+    /// 获取记录的列表窗口尺寸
+    /// - Parameter groupId: 分组标识符
+    /// - Returns: 窗口尺寸，如果不存在则返回nil
+    func getRecordedListWindowSize(for groupId: String) -> CGSize? {
+        return recordedListWindowSizes[groupId]
+    }
+    
+    /// 清除指定分组的窗口尺寸缓存
+    /// - Parameter groupId: 分组标识符
+    func clearRecordedListWindowSize(for groupId: String) {
+        Task { @MainActor in
+            recordedListWindowSizes.removeValue(forKey: groupId)
+        }
+    }
+    
+    /// 清除所有窗口尺寸缓存
+    func clearWindowSizeCache() {
+        Task { @MainActor in
+            recordedListWindowSizes.removeAll()
+        }
     }
     
     
@@ -477,6 +543,20 @@ class UnifiedWindowManager: ObservableObject {
             name: UnifiedWindowManager.Notification.clearScrollHistory,
             object: nil
         )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleListWindowSizeRecorded(_:)),
+            name: UnifiedWindowManager.Notification.listWindowSizeRecorded,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSelectDirectoryNotification(_:)),
+            name: UnifiedWindowManager.Notification.selectDirectory,
+            object: nil
+        )
     }
     
     @objc private func handleAdjustWindowNotification(_ notification: Foundation.Notification) {
@@ -517,12 +597,12 @@ class UnifiedWindowManager: ObservableObject {
     
     @objc private func handleScrollToImageNotification(_ notification: Foundation.Notification) {
         guard let index = notification.object as? Int else { return }
-        scrollToImage(at: index)
+        scrollToImage(at: index, options: .immediate)
     }
     
     @objc private func handleForceScrollToImageNotification(_ notification: Foundation.Notification) {
         guard let index = notification.object as? Int else { return }
-        forceScrollToImage(at: index)
+        scrollToImage(at: index, options: .forceDelayed)
     }
     
     @objc private func handleClearScrollHistoryNotification(_ notification: Foundation.Notification) {

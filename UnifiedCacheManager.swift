@@ -46,8 +46,6 @@ class UnifiedCacheManager: ObservableObject {
     
     private let thumbnailCache = NSCache<NSString, NSImage>()
     
-    private var recordedListWindowSizes: [String: CGSize] = [:]
-    
     private let cacheQueue = DispatchQueue(label: UnifiedCacheManagerConstants.Queues.cacheQueueIdentifier, attributes: .concurrent)
     
     private init() {
@@ -55,14 +53,20 @@ class UnifiedCacheManager: ObservableObject {
         thumbnailCache.totalCostLimit = UnifiedCacheManager.maxMemoryUsage
     }
     
+    // MARK: - 缓存键生成
+    
     func generateCacheKey(for imageItem: ImageItem, size: CGSize) -> String {
         return "\(imageItem.url.absoluteString)_\(size.width)x\(size.height)"
     }
+    
+    // MARK: - 缓存管理
     
     func shouldCleanupCache(currentCount: Int, currentMemoryUsage: Int) -> Bool {
 
         return currentCount > UnifiedCacheManager.maxCacheSize || currentMemoryUsage > UnifiedCacheManager.maxMemoryUsage
     }
+    
+    // MARK: - 缩略图缓存操作
     
     func getCachedThumbnail(for imageItem: ImageItem, size: CGSize) -> NSImage? {
         let key = generateCacheKey(for: imageItem, size: size) as NSString
@@ -75,7 +79,6 @@ class UnifiedCacheManager: ObservableObject {
     }
     
     func loadThumbnail(for imageItem: ImageItem, size: CGSize, completion: @escaping (NSImage?) -> Void) {
-        let _ = generateCacheKey(for: imageItem, size: size)
         
         if let cached = getCachedThumbnail(for: imageItem, size: size) {
             DispatchQueue.main.async {
@@ -129,36 +132,13 @@ class UnifiedCacheManager: ObservableObject {
         }
     }
     
+    // MARK: - 缓存清理
+    
     func clearThumbnailCache() {
         thumbnailCache.removeAllObjects()
     }
     
-    func setRecordedListWindowSize(for groupId: String, size: CGSize) {
-        cacheQueue.async(flags: .barrier) { [self] in
-            self.recordedListWindowSizes[groupId] = size
-        }
-    }
-    
-    func getRecordedListWindowSize(for groupId: String) -> CGSize? {
-        return cacheQueue.sync {
-            return recordedListWindowSizes[groupId]
-        }
-    }
-    
-    func clearRecordedListWindowSize(for groupId: String) {
-        cacheQueue.async(flags: .barrier) { [self] in
-            self.recordedListWindowSizes.removeValue(forKey: groupId)
-        }
-    }
-    
-    func clearWindowSizeCache() {
-        cacheQueue.async(flags: .barrier) { [self] in
-            self.recordedListWindowSizes.removeAll()
-        }
-    }
-    
     func clearAllCaches() {
         clearThumbnailCache()
-        clearWindowSizeCache()
     }
 }

@@ -358,16 +358,12 @@ class ImageBrowserViewModel: ObservableObject {
         UnifiedWindowManager.shared.adjustedScrollOffset(baseOffset)
     }
     
-    func scrollToImage(at index: Int) {
-        UnifiedWindowManager.shared.scrollToImage(at: index)
+    func scrollToImage(at index: Int, options: ScrollOptions = .immediate) {
+        UnifiedWindowManager.shared.scrollToImage(at: index, options: options)
     }
     
     func verifyScrollExecution(at index: Int) -> Bool {
         UnifiedWindowManager.shared.verifyScrollExecution(at: index)
-    }
-    
-    func forceScrollToImage(at index: Int) {
-        UnifiedWindowManager.shared.forceScrollToImage(at: index)
     }
     
     func selectImage(at index: Int) {
@@ -632,7 +628,7 @@ class ImageBrowserViewModel: ObservableObject {
     }
     
     func handleScrollToIndex(_ targetIndex: Int) {
-        UnifiedWindowManager.shared.handleScrollToIndex(targetIndex)
+        UnifiedWindowManager.shared.scrollToImage(at: targetIndex, options: .delayed)
     }
     
     func handleSelectionChange(_ selectedImages: Set<UUID>) {
