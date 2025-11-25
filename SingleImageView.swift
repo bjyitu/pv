@@ -131,9 +131,15 @@ struct SingleImageView: View {
                     )
                     .contrast(1.2) //对比度和亮度
                     .brightness(0.05)                 
-
                     .onAppear {
 
+                    }
+                    .onChange(of: viewModel.currentImageIndex) { _ in
+                        // 当切换图片时重置缩放并重新触发动画
+                        scale = 1.1
+                        withAnimation(.easeInOut(duration: viewModel.autoPlayInterval-1)) {
+                            scale = 1.15
+                        }
                     }
             } else {
                 Rectangle()
