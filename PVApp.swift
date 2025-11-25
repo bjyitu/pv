@@ -58,7 +58,6 @@ struct PVApp: App {
         var isDirectory: ObjCBool = false
         
         guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) else {
-            print("文件不存在: \(fileURL.path)")
             return
         }
         
