@@ -1,6 +1,57 @@
 import SwiftUI
 import Foundation
 
+/// 图片浏览器视图模型常量定义
+struct ImageBrowserViewModelConstants {
+    /// 默认自动播放间隔时间（秒）
+    static let defaultAutoPlayInterval: TimeInterval = 3.0
+    
+    /// 默认缩略图大小（像素）
+    static let defaultThumbnailSize: CGFloat = 200
+    
+    /// 支持的图片文件扩展名
+    static let supportedImageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
+    
+    /// 视图切换延迟时间（秒），用于确保焦点正确设置
+    static let viewSwitchDelay: TimeInterval = 0.2
+    
+    /// 键盘导航时上下方向移动的步长（图片数量）
+    static let keyboardNavigationStep: Int = 4
+    
+    /// 分页配置常量
+    struct Pagination {
+        /// 默认初始加载图片数量
+        static let defaultInitialLoadCount: Int = 100
+        
+        /// 分页加载的每页图片数量
+        static let pageSize: Int = 50
+        
+        /// 环境变量名称，用于覆盖默认初始加载数量
+        static let initialLoadCountEnvironmentVariable = "PV_INITIAL_LOAD_COUNT"
+    }
+    
+    /// 错误消息常量
+    struct ErrorMessages {
+        /// 目录为空时的错误消息
+        static let emptyDirectory = "该目录中没有找到支持的图片文件"
+        
+        /// 加载目录失败时的错误消息模板
+        static let directoryLoadFailed = "无法加载目录: %@"
+        
+        /// 删除图片失败时的错误消息模板
+        static let imageDeleteFailed = "删除图片失败: %@"
+    }
+    
+    /// 日志消息常量
+    struct LogMessages {
+        /// 加载更多图片时的日志消息模板
+        static let loadMoreImages = "加载了更多图片: 从 %d 到 %d, 总共 %d 张图片"
+        
+        /// 从单图返回时的日志消息模板
+        static let returnFromSingleView = "从单图返回，加载完整文件夹内容: %d -> %d"
+    }
+}
+
 @MainActor
 class ImageBrowserViewModel: ObservableObject {
     @Published var images: [ImageItem] = []
@@ -9,7 +60,7 @@ class ImageBrowserViewModel: ObservableObject {
     @Published var isSingleViewMode = false
     @Published var currentImageIndex = 0
     @Published var isAutoPlaying = false
-    @Published var autoPlayInterval: TimeInterval = 3.0
+    @Published var autoPlayInterval: TimeInterval = ImageBrowserViewModelConstants.defaultAutoPlayInterval
     @Published var showProgressBar = false
     
     @Published var errorMessage: String?
@@ -18,7 +69,7 @@ class ImageBrowserViewModel: ObservableObject {
     @Published var selectedImages: Set<UUID> = []
     @Published var lastSelectedIndex: Int = 0
     
-    @Published var manualThumbnailSize: CGFloat = 200
+    @Published var manualThumbnailSize: CGFloat = ImageBrowserViewModelConstants.defaultThumbnailSize
     
     // 随机排序状态管理
     @Published var isRandomOrderEnabled: Bool = false
@@ -26,15 +77,15 @@ class ImageBrowserViewModel: ObservableObject {
     
     private var autoPlayTimer: Timer?
     
-    private let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
+    private let imageExtensions = ImageBrowserViewModelConstants.supportedImageExtensions
     
     // 分页加载配置
     private struct PaginationConfig {
         // 环境变量优先，便于测试
         static let initialLoadCount: Int = {
-            ProcessInfo.processInfo.environment["PV_INITIAL_LOAD_COUNT"].flatMap(Int.init) ?? 100
+            ProcessInfo.processInfo.environment[ImageBrowserViewModelConstants.Pagination.initialLoadCountEnvironmentVariable].flatMap(Int.init) ?? ImageBrowserViewModelConstants.Pagination.defaultInitialLoadCount
         }()
-        static let pageSize: Int = 50
+        static let pageSize: Int = ImageBrowserViewModelConstants.Pagination.pageSize
         
         // 与CacheManager协调，确保不超过缓存限制
         static var effectiveInitialLoadCount: Int {
@@ -55,6 +106,11 @@ class ImageBrowserViewModel: ObservableObject {
     // 目录中实际图片总数
     var totalImagesInDirectory: Int {
         return allScannedImages.count
+    }
+    
+    // 检查是否有内容显示
+    var hasContent: Bool {
+        return !images.isEmpty && !isLoading
     }
     
     func loadInitialDirectory() {
@@ -130,13 +186,13 @@ class ImageBrowserViewModel: ObservableObject {
             self.isLoading = false
             
             if self.images.isEmpty {
-                self.errorMessage = "该目录中没有找到支持的图片文件"
+                self.errorMessage = ImageBrowserViewModelConstants.ErrorMessages.emptyDirectory
             }
             
         } catch {
             DispatchQueue.main.async {
                 self.isLoading = false
-                self.errorMessage = "无法加载目录: \(error.localizedDescription)"
+                self.errorMessage = String(format: ImageBrowserViewModelConstants.ErrorMessages.directoryLoadFailed, error.localizedDescription)
             }
         }
     }
@@ -215,7 +271,6 @@ class ImageBrowserViewModel: ObservableObject {
     
     func toggleViewMode() {
         isSingleViewMode.toggle()
-        print("Toggle view mode: \(Date()), isSingleViewMode = \(isSingleViewMode)")
         if isSingleViewMode {
             UnifiedWindowManager.shared.recordListWindowSize(groupId: currentDirectory?.path)
             isFirstTimeInSingleView = true
@@ -228,7 +283,7 @@ class ImageBrowserViewModel: ObservableObject {
             // 从单图返回时，确保显示完整文件夹内容
             ensureFullDirectoryContent()
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + ImageBrowserViewModelConstants.viewSwitchDelay) {
                 NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
             }
         }
@@ -241,7 +296,7 @@ class ImageBrowserViewModel: ObservableObject {
     func ensureFullDirectoryContent() {
         // 如果当前显示的不是完整目录内容，重新加载完整内容
         if images.count < allScannedImages.count {
-            print("从单图返回，加载完整文件夹内容: \(images.count) -> \(allScannedImages.count)")
+            print(String(format: ImageBrowserViewModelConstants.LogMessages.returnFromSingleView, images.count, allScannedImages.count))
             images = allScannedImages
             
             // 更新目录组以显示完整内容
@@ -472,7 +527,7 @@ class ImageBrowserViewModel: ObservableObject {
         canLoadMore = endIndex < allScannedImages.count
         isLoadingMore = false
         
-        print("加载了更多图片: 从 \(startIndex) 到 \(endIndex-1), 总共 \(images.count) 张图片")
+        print(String(format: ImageBrowserViewModelConstants.LogMessages.loadMoreImages, startIndex, endIndex-1, images.count))
     }
     
     private func getFirstSelectedIndex() -> Int {
@@ -495,9 +550,9 @@ class ImageBrowserViewModel: ObservableObject {
         case .right:
             newIndex = max(0, currentIndex - 1)
         case .up:
-            newIndex = max(0, currentIndex - 4)
+            newIndex = max(0, currentIndex - ImageBrowserViewModelConstants.keyboardNavigationStep)
         case .down:
-            newIndex = min(images.count - 1, currentIndex + 4)
+            newIndex = min(images.count - 1, currentIndex + ImageBrowserViewModelConstants.keyboardNavigationStep)
         }
         
         selectedImages.removeAll()
@@ -526,7 +581,7 @@ class ImageBrowserViewModel: ObservableObject {
                     deletedCount += 1
                 } catch {
                     DispatchQueue.main.async {
-                        self.errorMessage = "删除图片失败: \(error.localizedDescription)"
+                        self.errorMessage = String(format: ImageBrowserViewModelConstants.ErrorMessages.imageDeleteFailed, error.localizedDescription)
                     }
                     return
                 }
@@ -729,4 +784,3 @@ struct DirectoryGroup: Identifiable {
         self.id = name  // 使用目录名作为唯一标识
     }
 }
-
