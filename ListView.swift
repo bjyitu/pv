@@ -30,7 +30,7 @@ struct ListViewConstants {
     static let scrollCleanupDelay: TimeInterval = 0.5
     
     /// 窗口大小变化检测阈值（像素），避免微小变化触发重布局
-    static let resizeDetectionThreshold: CGFloat = 10
+    static let resizeDetectionThreshold: CGFloat = 5
     
     /// 窗口调整结束检测延迟时间（秒），用于判断窗口拉伸是否完成
     static let resizeEndDelay: TimeInterval = 0.3
@@ -66,6 +66,7 @@ struct ListView: View {
     @State private var hasReceivedGeometry = false
     @State private var windowResizeTask: DispatchWorkItem? = nil
     @State private var isWindowResizing = false
+    @State private var isWindowScaling = false
     @State private var lastWindowSize: CGSize = .zero
     @State private var resizeEndTimer: Timer? = nil
     
@@ -177,24 +178,41 @@ struct ListView: View {
     private func getFixedGridRows(for group: DirectoryGroup) -> [FixedGridRow] {
         guard hasReceivedGeometry else { return [] }
         
-        // 布局缓存优化：只有在宽度或图片数量变化时才重新计算
-        let cacheKey = "\(group.id)-\(availableWidth)"
-        let currentImageCount = group.images.count
+        // 使用固定缓存键：布局结构固定，只缩放图片尺寸
+        let cacheKey = "fixed_grid_layout"
         
-        // 检查是否需要重新计算布局
-        if let cachedRows = layoutCache[cacheKey], 
-           lastLayoutWidth == availableWidth && 
-           lastImageCount == currentImageCount {
-            return cachedRows
+        // 检查缓存是否存在
+        if let cachedRows = layoutCache[cacheKey] {
+            // 使用缓存的布局结构，只更新图片尺寸
+            return cachedRows.map { cachedRow in
+                // 重新计算图片尺寸以适应当前窗口宽度
+                let imagesPerRow = ListViewConstants.imagesPerRow
+                let spacing = ListViewConstants.spacing
+                let horizontalPadding = ListViewConstants.horizontalPadding
+                
+                let effectiveWidth = availableWidth - horizontalPadding * 2
+                let totalSpacing = spacing * CGFloat(imagesPerRow - 1)
+                let imageWidth = (effectiveWidth - totalSpacing) / CGFloat(imagesPerRow)
+                
+                // 使用缓存的宽高比计算新高度
+                let cachedAspectRatio = cachedRow.imageSize.width / cachedRow.imageSize.height
+                let imageHeight = imageWidth / cachedAspectRatio
+                
+                let newImageSize = CGSize(width: imageWidth, height: imageHeight)
+                
+                return FixedGridRow(
+                    images: cachedRow.images,
+                    imageSize: newImageSize,
+                    totalWidth: effectiveWidth
+                )
+            }
         }
         
-        // 重新计算布局
+        // 第一次调用：创建固定布局结构
         let rows = createFixedGridRows(from: group.images, availableWidth: availableWidth)
         
         // 更新缓存
         layoutCache[cacheKey] = rows
-        lastLayoutWidth = availableWidth
-        lastImageCount = currentImageCount
         
         // 清理过期的缓存（只保留最近几个）
         if layoutCache.count > ListViewConstants.maxCacheSize {
@@ -244,8 +262,8 @@ struct ListView: View {
                                     Color.clear
                                         .onChange(of: geometry.frame(in: .global).minY) { minY in
                                             // 检测指示器是否进入可见区域（主要触发机制）
-                                            // 只有在窗口未调整时才触发加载更多
-                                            if !isWindowResizing {
+                                            // 只有在窗口未调整且不在缩放过程中才触发加载更多
+                                            if !isWindowResizing && !isWindowScaling {
                                                 let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
                                                 if minY < screenHeight && minY > -geometry.size.height {
                                                     if viewModel.canLoadMore && !viewModel.isLoadingMore {
@@ -406,8 +424,9 @@ struct ListView: View {
     
     // 统一的窗口大小变化处理方法，避免重复的状态管理逻辑
     private func handleWindowResizeStart(newSize: CGSize) {
-        // 窗口大小发生显著变化，标记为正在调整
+        // 窗口大小发生显著变化，标记为正在调整和缩放
         isWindowResizing = true
+        isWindowScaling = true
         
         // 立即更新布局宽度，确保界面实时响应
         availableWidth = newSize.width
@@ -418,8 +437,9 @@ struct ListView: View {
         
         // 设置新的结束检测计时器（无变化视为调整结束）
         resizeEndTimer = Timer.scheduledTimer(withTimeInterval: ListViewConstants.resizeEndDelay, repeats: false) { _ in
-            // 窗口调整结束，仅标记调整状态结束
+            // 窗口调整结束，标记调整状态结束
             isWindowResizing = false
+            isWindowScaling = false
             print("窗口拉伸结束，可以触发加载操作")
         }
         
@@ -543,7 +563,7 @@ struct SmartImageThumbnailView: View {
     @MainActor
     private func loadThumbnail() {
         // 重置缩略图状态，避免显示旧的缩略图
-        thumbnail = nil
+        // thumbnail = nil
         
         viewModel.loadThumbnail(for: imageItem, size: size) { thumbnail in
             self.thumbnail = thumbnail
