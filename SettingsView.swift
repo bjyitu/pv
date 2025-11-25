@@ -10,74 +10,33 @@ struct SettingsView: View {
                 .fontWeight(.bold)
                 .padding(.bottom, 10)
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("滚动速度")
-                    .font(.headline)
-                
-                HStack {
-                    Text("慢")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Slider(value: $appSettings.scrollSpeed, in: 0.5...2.0, step: 0.1)
-                        .labelsHidden()
-                    
-                    Text("快")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("\(appSettings.scrollSpeed, specifier: "1.1")x")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 30)
-                }
-            }
+            // 统一的滑块设置项组件，避免重复的布局代码
+            sliderSetting(
+                title: "滚动速度",
+                binding: $appSettings.scrollSpeed,
+                range: 0.5...2.0,
+                leftLabel: "慢",
+                rightLabel: "快",
+                valueFormat: "1.1x"
+            )
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("滚动灵敏度")
-                    .font(.headline)
-                
-                HStack {
-                    Text("低")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Slider(value: $appSettings.scrollSensitivity, in: 0.5...2.0, step: 0.1)
-                        .labelsHidden()
-                    
-                    Text("高")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("\(appSettings.scrollSensitivity, specifier: "1.1")x")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 30)
-                }
-            }
+            sliderSetting(
+                title: "滚动灵敏度", 
+                binding: $appSettings.scrollSensitivity,
+                range: 0.5...2.0,
+                leftLabel: "低",
+                rightLabel: "高",
+                valueFormat: "1.1x"
+            )
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("滚动动画持续时间")
-                    .font(.headline)
-                
-                HStack {
-                    Text("快")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Slider(value: $appSettings.scrollAnimationDuration, in: 0.1...1.0, step: 0.1)
-                        .labelsHidden()
-                    
-                    Text("慢")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("\(appSettings.scrollAnimationDuration, specifier: "1.1")s")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 30)
-                }
-            }
+            sliderSetting(
+                title: "滚动动画持续时间",
+                binding: $appSettings.scrollAnimationDuration,
+                range: 0.1...1.0,
+                leftLabel: "快",
+                rightLabel: "慢", 
+                valueFormat: "1.1s"
+            )
             
             Divider()
             
@@ -138,6 +97,40 @@ struct SettingsView: View {
         appSettings.scrollSensitivity = 0.8
         appSettings.scrollAnimationDuration = 0.6
         appSettings.autoScrollEnabled = true
+    }
+    
+    // 统一的滑块设置项组件，避免重复的布局代码
+    @ViewBuilder
+    private func sliderSetting(
+        title: String,
+        binding: Binding<Double>,
+        range: ClosedRange<Double>,
+        leftLabel: String,
+        rightLabel: String,
+        valueFormat: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            
+            HStack {
+                Text(leftLabel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Slider(value: binding, in: range, step: 0.1)
+                    .labelsHidden()
+                
+                Text(rightLabel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text("\(binding.wrappedValue, specifier: valueFormat)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(width: 30)
+            }
+        }
     }
 }
 
