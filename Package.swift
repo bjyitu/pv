@@ -30,7 +30,8 @@ let package = Package(
                 "AppSettings.swift",
                 "UnifiedFocusManager.swift",
                 "UnifiedWindowManager.swift",
-                "ImageBrowserHelpers.swift"
+                "ImageBrowserHelpers.swift",
+                "ViewStyles.swift"
             ],
             resources: [
             ],
