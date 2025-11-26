@@ -280,9 +280,6 @@ class ImageBrowserViewModel: ObservableObject {
             UnifiedWindowManager.shared.updateTitle()
             isFirstTimeInSingleView = false
             
-            // 从单图返回时，确保显示完整文件夹内容
-            ensureFullDirectoryContent()
-            
             DispatchQueue.main.asyncAfter(deadline: .now() + ImageBrowserViewModelConstants.viewSwitchDelay) {
                 NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
             }

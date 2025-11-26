@@ -232,9 +232,9 @@ struct ListView: View {
                                 } else {
                                     Button(action: {
                                         // 只有在窗口未调整时才触发加载更多
-                                        if !isWindowResizing {
-                                            viewModel.loadMoreImages()
-                                        }
+                                        // if !isWindowResizing {
+                                        //     viewModel.loadMoreImages()
+                                        // }
                                     }) {
                                         Image(systemName: "arrow.down.circle")
                                             .font(.title2)
@@ -488,7 +488,7 @@ struct SmartImageThumbnailView: View {
     @ViewBuilder
     private var selectedBorder: some View {
         RoundedRectangle(cornerRadius: ListViewConstants.cornerRadius)
-            .stroke(isSelected ? Color.white : Color.clear, lineWidth: ListViewConstants.selectedBorderWidth)
+            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: ListViewConstants.selectedBorderWidth)
     }
     
     @ViewBuilder
