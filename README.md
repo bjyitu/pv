@@ -7,6 +7,6 @@ build_pv_app.sh 可以构建一个.app应用,最低支持 MacOs 12.
 
 单张视图
 - 空格键开始自动播放
-- 左右键切换
+- 左右方向键切换
 - 
 <img width="811" height="1115" alt="SingleView" src="https://github.com/user-attachments/assets/03cb7322-fefc-4809-b88f-7d6378043189" />
