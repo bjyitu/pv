@@ -656,9 +656,25 @@ class WindowDelegate: NSObject, NSWindowDelegate {
     }
     
     func windowWillClose(_ notification: Notification) {
+        // 对于 SwiftUI WindowGroup，需要特殊处理
         DispatchQueue.main.asyncAfter(deadline: .now() + UnifiedWindowManagerConstants.windowCloseDelay) {
-            if NSApplication.shared.windows.isEmpty {
+            // 检查所有窗口，包括可能隐藏的窗口
+            let allWindows = NSApplication.shared.windows
+            let visibleWindows = allWindows.filter { $0.isVisible }
+            
+            if visibleWindows.isEmpty {
+                // 如果没有可见窗口，退出应用
                 NSApplication.shared.terminate(nil)
+            } else {
+                // 如果有隐藏窗口，也检查是否需要退出
+                // SwiftUI 可能会创建隐藏窗口用于管理
+                let hasMainWindows = allWindows.contains { window in
+                    window.isVisible && window.canBecomeMain
+                }
+                
+                if !hasMainWindows {
+                    NSApplication.shared.terminate(nil)
+                }
             }
         }
     }

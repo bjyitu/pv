@@ -364,10 +364,12 @@ class ImageBrowserViewModel: ObservableObject {
     }
     
     func selectImage(at index: Int) {
+        
+        stopAutoPlay()
+
         guard images.indices.contains(index) else { 
             return 
         }
-        
         currentImageIndex = index
         isSingleViewMode = true
         
