@@ -1,4 +1,35 @@
 import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
+
+/// NSImage扩展：添加锐化功能
+extension NSImage {
+    /// 应用锐化滤镜
+    func sharpened(intensity: Double = 0.8, radius: Double = 2.0) -> NSImage? {
+        guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+        
+        let ciImage = CIImage(cgImage: cgImage)
+        
+        // 使用USM锐化滤镜（Unsharp Mask）
+        let sharpenFilter = CIFilter.unsharpMask()
+        sharpenFilter.inputImage = ciImage
+        sharpenFilter.intensity = Float(intensity)
+        sharpenFilter.radius = Float(radius)
+        
+        guard let outputImage = sharpenFilter.outputImage else {
+            return nil
+        }
+        
+        // 将CIImage转换回NSImage
+        let rep = NSCIImageRep(ciImage: outputImage)
+        let sharpenedImage = NSImage(size: rep.size)
+        sharpenedImage.addRepresentation(rep)
+        
+        return sharpenedImage
+    }
+}
 
 /// 单图视图常量定义
 struct SingleImageViewConstants {
@@ -14,17 +45,17 @@ struct SingleImageViewConstants {
     /// 自动加载更多图片的阈值（距离末尾的图片数量）
     static let loadMoreThreshold: Int = 5
     
-    /// 图片边缘增强效果的模糊半径
-    static let edgeEnhancementBlurRadius: CGFloat = 1
+    /// 锐化滤镜强度 (0.0 - 2.0)
+    static let sharpenIntensity: Double = 0.6
     
-    /// 边缘增强效果的不透明度
-    static let edgeEnhancementOpacity: CGFloat = 0.2
+    /// 锐化滤镜半径 (像素)
+    static let sharpenRadius: Double = 0.7
     
     /// 图片对比度增强值
     static let contrastEnhancement: CGFloat = 1.2
     
     /// 图片亮度调整值
-    static let brightnessAdjustment: CGFloat = 0.05
+    static let brightnessAdjustment: CGFloat = 0.03
     
     /// 占位符图标的大小
     static let placeholderIconSize: CGFloat = 48
@@ -52,7 +83,7 @@ struct SingleImageView: View {
                     Spacer()
                     GeometryReader { geometry in
                         Rectangle()
-                            .fill(Color.gray.opacity(0.8))
+                            .fill(Color.accentColor.opacity(0.8))
                             .frame(
                                 width: geometry.size.width * CGFloat(viewModel.currentImageIndex + 1) / CGFloat(viewModel.totalImagesInDirectory),
                                 height: 4
@@ -138,21 +169,17 @@ struct SingleImageView: View {
     
     private func imageView(for imageItem: ImageItem) -> some View {
         GeometryReader { geometry in
-            if let nsImage = NSImage(contentsOf: imageItem.url) {
-                Image(nsImage: nsImage)
+            if let nsImage = NSImage(contentsOf: imageItem.url),
+               let sharpenedImage = nsImage.sharpened(
+                   intensity: SingleImageViewConstants.sharpenIntensity,
+                   radius: SingleImageViewConstants.sharpenRadius
+               ) {
+                Image(nsImage: sharpenedImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)   
-                    .overlay( //锐化边缘增强
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .blur(radius: SingleImageViewConstants.edgeEnhancementBlurRadius)  // 轻微模糊
-                            .blendMode(.difference)  // 差异混合突出边缘
-                            .opacity(SingleImageViewConstants.edgeEnhancementOpacity)  // 降低强度
-                    )
-                    .contrast(SingleImageViewConstants.contrastEnhancement) //对比度和亮度
-                    .brightness(SingleImageViewConstants.brightnessAdjustment)    
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contrast(SingleImageViewConstants.contrastEnhancement)
+                    .brightness(SingleImageViewConstants.brightnessAdjustment)
                     .scaleEffect(scale)
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         withAnimation(.linear(duration: 0)) {
