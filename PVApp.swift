@@ -5,6 +5,23 @@ struct PVApp: App {
     @StateObject private var windowManager = UnifiedWindowManager.shared
     @StateObject private var viewModel = ImageBrowserViewModel()
     
+    // MARK: - AppDelegate适配器（最小化改动）
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
+    // 内部AppDelegate类，避免创建新文件
+    class AppDelegate: NSObject, NSApplicationDelegate {
+        func application(_ application: NSApplication, open urls: [URL]) {
+            // 延迟处理，确保应用完全启动
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // 通过通知中心转发文件打开请求
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("PVApp.FileOpenRequest"),
+                    object: urls
+                )
+            }
+        }
+    }
+    
     // MARK: - 启动配置常量
     private struct LaunchConfiguration {
         struct Delays {
@@ -27,9 +44,12 @@ struct PVApp: App {
                 .onAppear {
                     windowManager.initializeWindow()
                     handleLaunchArguments()
+                    setupFileOpenNotification()
                 }
         }
         .windowStyle(DefaultWindowStyle())
+        // 防止文件打开时创建新窗口
+        .handlesExternalEvents(matching: [])
         .commands {
             SidebarCommands()
             CommandGroup(replacing: .newItem) {
@@ -142,6 +162,22 @@ struct PVApp: App {
             return LaunchConfiguration.Delays.retryAfterFullScan
         default:
             return 0
+        }
+    }
+    
+    // MARK: - 文件打开通知处理
+    private func setupFileOpenNotification() {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("PVApp.FileOpenRequest"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let urls = notification.object as? [URL] else { return }
+            
+            // 使用现有的文件处理逻辑
+            for url in urls {
+                self.handleFileOpen(url)
+            }
         }
     }
 }
