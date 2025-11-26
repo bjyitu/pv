@@ -168,7 +168,8 @@ class UnifiedFocusView: NSView {
         case UnifiedFocusManagerConstants.KeyEvents.upArrowKeyCode:  // 上箭头 - 上一张图片
             break
         case UnifiedFocusManagerConstants.KeyEvents.downArrowKeyCode:  // 下箭头 - 下一张图片
-            break
+            viewModel.stopAutoPlay()
+            NSWorkspace.shared.selectFile(viewModel.images[viewModel.currentImageIndex].url.path, inFileViewerRootedAtPath: "")
         case UnifiedFocusManagerConstants.KeyEvents.rightArrowKeyCode:  // 右箭头 - 下一张图片
             viewModel.stopAutoPlay()
             viewModel.nextImage()
@@ -202,13 +203,13 @@ class UnifiedFocusView: NSView {
                 viewModel.selectImage(at: viewModel.currentImageIndex)
             }
         case UnifiedFocusManagerConstants.KeyEvents.upArrowCharacter:  // 上箭头
-            viewModel.navigateSelection(direction: .right)  // 右箭头向右选择
+            break
         case UnifiedFocusManagerConstants.KeyEvents.downArrowCharacter:  // 下箭头
-            viewModel.navigateSelection(direction: .left)  // 左箭头向左选择
+            break
         case UnifiedFocusManagerConstants.KeyEvents.leftArrowCharacter:  // 左箭头
-            break
+            viewModel.navigateSelection(direction: .left)  // 左箭头向左选择
         case UnifiedFocusManagerConstants.KeyEvents.rightArrowCharacter:  // 右箭头
-            break
+            viewModel.navigateSelection(direction: .right)  // 右箭头向右选择
         case UnifiedFocusManagerConstants.KeyEvents.minusCharacter:  // 减号键 - 缩小缩略图
             viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.minusCharacter)
         case UnifiedFocusManagerConstants.KeyEvents.equalsCharacter:  // 等号键 - 放大缩略图
