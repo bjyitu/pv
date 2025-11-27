@@ -58,6 +58,7 @@ class ImageBrowserViewModel: ObservableObject {
     @Published var directoryGroups: [DirectoryGroup] = []
     @Published var currentDirectory: URL?
     @Published var isSingleViewMode = false
+    @Published var isReturningFromSingleView = false  // 新增：从单页返回状态标记
     @Published var currentImageIndex = 0
     @Published var isAutoPlaying = false
     @Published var autoPlayInterval: TimeInterval = ImageBrowserViewModelConstants.defaultAutoPlayInterval
@@ -112,7 +113,7 @@ class ImageBrowserViewModel: ObservableObject {
     var hasContent: Bool {
         return !images.isEmpty && !isLoading
     }
-    
+    //加载默认目录
     func loadInitialDirectory() {
     }
     
@@ -274,7 +275,11 @@ class ImageBrowserViewModel: ObservableObject {
         if isSingleViewMode {
             UnifiedWindowManager.shared.recordListWindowSize(groupId: currentDirectory?.path)
             isFirstTimeInSingleView = true
+            isReturningFromSingleView = false  // 进入单页时清除返回标记
         } else {
+            // 设置从单页返回状态标记
+            isReturningFromSingleView = true
+            
             UnifiedWindowManager.shared.restoreListWindowSize(groupId: currentDirectory?.path)
             updateSelectionFromSingleView()
             UnifiedWindowManager.shared.updateTitle()
@@ -282,6 +287,11 @@ class ImageBrowserViewModel: ObservableObject {
             
             DispatchQueue.main.asyncAfter(deadline: .now() + ImageBrowserViewModelConstants.viewSwitchDelay) {
                 NotificationCenter.default.post(name: NSNotification.Name("SetFocusToListView"), object: nil)
+            }
+            
+            // 延迟清除返回标记，确保在窗口恢复期间不会误触发加载
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.isReturningFromSingleView = false
             }
         }
         
@@ -372,6 +382,7 @@ class ImageBrowserViewModel: ObservableObject {
         }
         currentImageIndex = index
         isSingleViewMode = true
+        isReturningFromSingleView = false  // 进入单页时清除返回标记
         
         UnifiedWindowManager.shared.recordListWindowSize(groupId: currentDirectory?.path)
         

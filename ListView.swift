@@ -20,9 +20,6 @@ struct ListViewConstants {
     /// 缩略图缓存的最大数量，平衡内存使用和性能
     static let maxCacheSize = 5
     
-    /// 计算平均宽高比时采样的最大图片数量，避免性能问题
-    static let maxAspectRatioSampleSize = 100
-    
     /// 滚动重试延迟时间（秒），用于处理目标项未渲染的情况
     static let scrollRetryDelay: TimeInterval = 0.1
     
@@ -148,33 +145,16 @@ struct ListView: View {
     private func calculateAverageAspectRatio(images: [ImageItem]) -> CGFloat {
         guard !images.isEmpty else { return 1.0 } // 默认宽高比
         
-        // 优化：对于大量图片，使用采样计算而不是全部计算
-        let maxSampleSize = ListViewConstants.maxAspectRatioSampleSize
+        // 统一采样前6张图片计算平均宽高比
+        let sampleSize = min(images.count, ListViewConstants.imagesPerRow)
+        var totalAspectRatio: CGFloat = 0.0
         
-        if images.count <= maxSampleSize {
-            // 图片数量较少，直接计算
-            let totalAspectRatio = images.reduce(0.0) { result, image in
-                return result + (image.size.width / image.size.height)
-            }
-            return totalAspectRatio / CGFloat(images.count)
-        } else {
-            // 图片数量较多，使用采样计算
-            let step = images.count / maxSampleSize
-            var totalAspectRatio: CGFloat = 0.0
-            var sampleCount = 0
-            
-            for i in stride(from: 0, to: images.count, by: step) {
-                let image = images[i]
-                totalAspectRatio += (image.size.width / image.size.height)
-                sampleCount += 1
-                
-                if sampleCount >= maxSampleSize {
-                    break
-                }
-            }
-            
-            return totalAspectRatio / CGFloat(sampleCount)
+        for i in 0..<sampleSize {
+            let image = images[i]
+            totalAspectRatio += (image.size.width / image.size.height)
         }
+        
+        return totalAspectRatio / CGFloat(sampleSize)
     }
     
     private func getFixedGridRows(for group: DirectoryGroup) -> [FixedGridRow] {
@@ -250,13 +230,11 @@ struct ListView: View {
                                 GeometryReader { geometry in
                                     Color.clear
                                         .onChange(of: geometry.frame(in: .global).minY) { minY in
-                                            // 检测指示器是否进入可见区域（主要触发机制）
-                                            // 只有在窗口未调整时才触发加载更多
-                                            if !isWindowResizing {
+                                            // 只有在非窗口调整、非单页模式、非从单页返回状态下才检测加载
+                                            if !isWindowResizing && !viewModel.isSingleViewMode && !viewModel.isReturningFromSingleView {
                                                 let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
-                                                if minY < screenHeight && minY > -geometry.size.height {
+                                                if minY >= -geometry.size.height && minY < screenHeight {
                                                     if viewModel.canLoadMore && !viewModel.isLoadingMore {
-                                                        print("加载指示器进入可见区域，触发自动加载更多")
                                                         viewModel.loadMoreImages()
                                                     }
                                                 }
@@ -380,13 +358,6 @@ struct ListView: View {
         }
     }
     
-
-    
-    private func selectDirectory() {
-        viewModel.selectDirectory()
-    }
-    
-
     
     private func handleImageClick(_ image: ImageItem) {
         guard let index = viewModel.images.firstIndex(where: { $0.id == image.id }) else { return }
