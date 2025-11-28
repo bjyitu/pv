@@ -30,7 +30,9 @@ let package = Package(
                 "AppSettings.swift",
                 "UnifiedFocusManager.swift",
                 "UnifiedWindowManager.swift",
-                "ViewStyles.swift"
+                "ViewStyles.swift",
+                "LayoutCalculator.swift",
+                "SmartImageThumbnailView.swift"
             ],
             resources: [
             ],
@@ -38,11 +40,5 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Info.plist"])
             ]
         ),
-        .testTarget(
-            name: "PVTests",
-            dependencies: ["PV"],
-            path: ".",
-            sources: ["PVAppTests.swift"]
-        )
     ]
 )

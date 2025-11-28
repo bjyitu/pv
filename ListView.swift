@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // 样式常量
 struct ListViewConstants {
@@ -9,7 +10,7 @@ struct ListViewConstants {
     static let spacing: CGFloat = 10
     
     /// 列表视图的水平内边距，用于左右两侧的留白
-    static let horizontalPadding: CGFloat = 6
+    static let horizontalPadding: CGFloat = 10
     
     /// 图片缩略图的圆角半径，影响视觉风格
     static let cornerRadius: CGFloat = 4
@@ -19,6 +20,9 @@ struct ListViewConstants {
     
     /// 缩略图缓存的最大数量，平衡内存使用和性能
     static let maxCacheSize = 5
+    
+    /// 宽高比采样的最大图片数量，避免计算过多图片影响性能
+    static let maxAspectRatioSampleSize = 10
     
     /// 滚动重试延迟时间（秒），用于处理目标项未渲染的情况
     static let scrollRetryDelay: TimeInterval = 0.1
@@ -36,13 +40,13 @@ struct ListViewConstants {
     static let selectedScale: CGFloat = 1.02
     
     /// 选中动画持续时间（秒），用于缩放和边框动画
-    static let selectionAnimationDuration: TimeInterval = 0.15
+    static let selectionAnimationDuration: TimeInterval = 0.05
     
     /// 占位符图标的缩放比例，相对于缩略图尺寸
     static let placeholderIconScale: CGFloat = 0.3
     
     /// 悬停效果的不透明度，用于鼠标悬停时的视觉反馈
-    static let hoverOpacity: CGFloat = 0.05
+    static let hoverOpacity: CGFloat = 0.5
     
     /// 占位符背景的不透明度，用于空状态显示
     static let placeholderBackgroundOpacity: CGFloat = 0.1
@@ -57,141 +61,33 @@ struct FixedGridRow {
     var imageCount: Int { images.count }
 }
 
+/// ListView 的状态管理对象
+class ListViewState: ObservableObject {
+    @Published var availableWidth: CGFloat = 0
+    @Published var hasReceivedGeometry: Bool = false
+    @Published var isWindowResizing: Bool = false
+    @Published var lastWindowSize: CGSize = .zero
+    
+    // 定时器和任务
+    var windowResizeTask: DispatchWorkItem? = nil
+    var resizeEndTimer: Timer? = nil
+}
+
 struct ListView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
-    @State private var availableWidth: CGFloat = 0
-    @State private var hasReceivedGeometry = false
-    @State private var windowResizeTask: DispatchWorkItem? = nil
-    @State private var isWindowResizing = false
-    @State private var lastWindowSize: CGSize = .zero
-    @State private var resizeEndTimer: Timer? = nil
+    @StateObject private var viewState = ListViewState()
     
-    // 布局缓存优化
-    @State private var layoutCache: [String: [FixedGridRow]] = [:]
+    // 布局计算器
+    private let layoutCalculator = LayoutCalculator()
     
-    private func createFixedGridRows(from images: [ImageItem], availableWidth: CGFloat) -> [FixedGridRow] {
-        guard !images.isEmpty else { return [] }
-        
-        // 使用常量配置布局
-        let imagesPerRow = ListViewConstants.imagesPerRow
-        
-        // 计算可用宽度（减去水平内边距）
-        let effectiveWidth = calculateEffectiveWidth()
-        
-        // 计算平均宽高比
-        let avgAspectRatio = calculateAverageAspectRatio(images: images)
-        let imageSize = calculateImageSize(for: imagesPerRow)
-        let adjustedImageSize = CGSize(width: imageSize.width, height: imageSize.width / avgAspectRatio)
-        
-        var rows: [FixedGridRow] = []
-        var currentRowImages: [ImageItem] = []
-        
-        for image in images {
-            currentRowImages.append(image)
-            
-            // 当达到每行图片数量或处理到最后一张图片时
-            if currentRowImages.count == imagesPerRow {
-                let row = FixedGridRow(
-                    images: currentRowImages,
-                    imageSize: adjustedImageSize,
-                    totalWidth: effectiveWidth
-                )
-                rows.append(row)
-                currentRowImages = []
-            }
-        }
-        
-        // 处理最后一行（可能不足6个图片）
-        if !currentRowImages.isEmpty {
-            let row = FixedGridRow(
-                images: currentRowImages,
-                imageSize: adjustedImageSize,
-                totalWidth: effectiveWidth
-            )
-            rows.append(row)
-        }
-        
-        print("=== ListView 固定网格布局 ===")
-        print("总行数: \(rows.count)")
-        print("可用宽度: \(availableWidth)")
-        print("有效宽度: \(effectiveWidth)")
-        print("图片尺寸: \(adjustedImageSize)")
-        print("每行图片数: \(imagesPerRow)")
-        
-        return rows
-    }
-    
-    /// 计算有效宽度（减去水平内边距）
-    private func calculateEffectiveWidth() -> CGFloat {
-        return availableWidth - ListViewConstants.horizontalPadding * 2
-    }
-    
-    /// 计算图片尺寸
-    private func calculateImageSize(for imagesCount: Int) -> CGSize {
-        let imagesPerRow = ListViewConstants.imagesPerRow
-        let spacing = ListViewConstants.spacing
-        
-        let effectiveWidth = calculateEffectiveWidth()
-        let totalSpacing = spacing * CGFloat(imagesPerRow - 1)
-        let imageWidth = (effectiveWidth - totalSpacing) / CGFloat(imagesPerRow)
-        
-        // 使用默认宽高比计算高度
-        let imageHeight = imageWidth / 1.0 // 默认宽高比
-        
-        return CGSize(width: imageWidth, height: imageHeight)
-    }
-    
-    /// 计算图片的平均宽高比（优化版本）
-    private func calculateAverageAspectRatio(images: [ImageItem]) -> CGFloat {
-        guard !images.isEmpty else { return 1.0 } // 默认宽高比
-        
-        // 统一采样前6张图片计算平均宽高比
-        let sampleSize = min(images.count, ListViewConstants.imagesPerRow)
-        var totalAspectRatio: CGFloat = 0.0
-        
-        for i in 0..<sampleSize {
-            let image = images[i]
-            totalAspectRatio += (image.size.width / image.size.height)
-        }
-        
-        return totalAspectRatio / CGFloat(sampleSize)
-    }
+    // 注：布局计算逻辑已移至 LayoutCalculator 类
     
     private func getFixedGridRows(for group: DirectoryGroup) -> [FixedGridRow] {
-        guard hasReceivedGeometry else { return [] }
-        
-        // 使用固定缓存键：布局结构固定，只缩放图片尺寸
-        let cacheKey = "fixed_grid_layout"
-        
-        // 检查缓存是否存在
-        if let cachedRows = layoutCache[cacheKey] {
-            // 使用缓存的布局结构，只更新图片尺寸
-            return cachedRows.map { cachedRow in
-                let newImageSize = calculateImageSize(for: cachedRow.images.count)
-                
-                return FixedGridRow(
-                    images: cachedRow.images,
-                    imageSize: newImageSize,
-                    totalWidth: calculateEffectiveWidth()
-                )
-            }
-        }
-        
-        // 第一次调用：创建固定布局结构
-        let rows = createFixedGridRows(from: group.images, availableWidth: availableWidth)
-        
-        // 更新缓存
-        layoutCache[cacheKey] = rows
-        
-        // 清理过期的缓存（只保留最近几个）
-        if layoutCache.count > ListViewConstants.maxCacheSize {
-            let keysToRemove = Array(layoutCache.keys).prefix(layoutCache.count - ListViewConstants.maxCacheSize)
-            for key in keysToRemove {
-                layoutCache.removeValue(forKey: key)
-            }
-        }
-        
-        return rows
+        return layoutCalculator.getFixedGridRows(
+            for: group,
+            availableWidth: viewState.availableWidth,
+            hasReceivedGeometry: viewState.hasReceivedGeometry
+        )
     }
 
     var body: some View {
@@ -205,46 +101,15 @@ struct ListView: View {
                         
                         // 加载更多指示器
                         if viewModel.canLoadMore {
-                            VStack {
-                                if viewModel.isLoadingMore {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                } else {
-                                    Button(action: {
-                                        // 只有在窗口未调整时才触发加载更多
-                                        // if !isWindowResizing {
-                                        //     viewModel.loadMoreImages()
-                                        // }
-                                    }) {
-                                        Image(systemName: "arrow.down.circle")
-                                            .font(.title2)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 20)
-                            .id("load-more-indicator") // 为加载指示器添加ID
-                            .background(
-                                GeometryReader { geometry in
-                                    Color.clear
-                                        .onChange(of: geometry.frame(in: .global).minY) { minY in
-                                            // 只有在非窗口调整、非单页模式、非从单页返回状态下才检测加载
-                                            if !isWindowResizing && !viewModel.isSingleViewMode && !viewModel.isReturningFromSingleView {
-                                                let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
-                                                if minY >= -geometry.size.height && minY < screenHeight {
-                                                    if viewModel.canLoadMore && !viewModel.isLoadingMore {
-                                                        viewModel.loadMoreImages()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                }
+                            LoadMoreIndicator(
+                                isLoading: viewModel.isLoadingMore,
+                                onLoadMore: { viewModel.loadMoreImages() },
+                                canLoad: !viewState.isWindowResizing && !viewModel.isSingleViewMode && !viewModel.isReturningFromSingleView
                             )
+                            .id("load-more-indicator")
                         }
                     }
-                    .padding(.leading, 6)  // 左侧间距
+
                     .onReceive(NotificationCenter.default.publisher(for: UnifiedWindowManager.Notification.scrollToImage)) { notification in
                         if let userInfo = notification.userInfo,
                            let index = userInfo["index"] as? Int {
@@ -265,26 +130,29 @@ struct ListView: View {
                     .onDisappear {
                         viewModel.clearScrollProxy()
                     }
+                    .drawingGroup()
                 }
+                .padding(.horizontal, ListViewConstants.horizontalPadding)
             }
             .onAppear {
-                if !hasReceivedGeometry {
-                    availableWidth = geometry.size.width
-                    hasReceivedGeometry = true
+                if !viewState.hasReceivedGeometry {
+                    viewState.availableWidth = geometry.size.width
+                    viewState.hasReceivedGeometry = true
                 }
             }
             .onChange(of: geometry.size) { newSize in
-                // 添加这行检查
                 guard !viewModel.isSingleViewMode else { return }
-
-                // 检测窗口大小是否发生显著变化（避免微小变化触发重算）
-                let widthChangedSignificantly = abs(newSize.width - lastWindowSize.width) > ListViewConstants.resizeDetectionThreshold
-                let heightChangedSignificantly = abs(newSize.height - lastWindowSize.height) > ListViewConstants.resizeDetectionThreshold
                 
-                if widthChangedSignificantly || heightChangedSignificantly {
+                // 检测显著的窗口大小变化
+                let widthChanged = abs(newSize.width - viewState.lastWindowSize.width) > ListViewConstants.resizeDetectionThreshold
+                let heightChanged = abs(newSize.height - viewState.lastWindowSize.height) > ListViewConstants.resizeDetectionThreshold
+                
+                if widthChanged || heightChanged {
                     handleWindowResizeStart(newSize: newSize)
                 }
             }
+            
+            
         }
         .onAppear {
             if !viewModel.images.isEmpty && viewModel.selectedImages.isEmpty {
@@ -294,13 +162,14 @@ struct ListView: View {
         .background(
             UnifiedKeyboardListener(viewModel: viewModel, mode: .list)
         )
+        
     }
 
     private func directorySection(for group: DirectoryGroup, proxy: ScrollViewProxy) -> some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
-            let fixedGridRows = getFixedGridRows(for: group)
-            
-            if !hasReceivedGeometry {
+        let fixedGridRows = getFixedGridRows(for: group)
+        
+        return Group {
+            if !viewState.hasReceivedGeometry {
                 HStack {
                     Spacer()
                 }
@@ -337,23 +206,19 @@ struct ListView: View {
                 }
             }
         }
-        .id("\(group.id)-\(viewModel.manualThumbnailSize)") // 使用缩略图尺寸作为ID的一部分
+        .id("\(group.id)") // 只使用组ID作为标识，不再响应缩略图尺寸变化
     }
     
     private func performPhasedScroll(to index: Int, proxy: ScrollViewProxy) {
-        guard index >= 0 && index < viewModel.images.count else { 
-            return 
-        }
+        guard index >= 0 && index < viewModel.images.count else { return }
         
         let targetImage = viewModel.images[index]
-        
-        // 简化重试机制：立即滚动一次
         withAnimation {
             proxy.scrollTo(targetImage.id, anchor: .center)
         }
         
-        // 0.1秒后清理滚动状态
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // 清理滚动状态
+        DispatchQueue.main.asyncAfter(deadline: .now() + ListViewConstants.scrollRetryDelay) {
             UnifiedWindowManager.shared.shouldScrollToIndex = nil
         }
     }
@@ -376,151 +241,69 @@ struct ListView: View {
     
     // 统一的窗口大小变化处理方法，避免重复的状态管理逻辑
     private func handleWindowResizeStart(newSize: CGSize) {
-        // 窗口大小发生显著变化，标记为正在调整
-        isWindowResizing = true
+        viewState.isWindowResizing = true
+        viewState.availableWidth = newSize.width
+        viewState.hasReceivedGeometry = true
         
-        // 立即更新布局宽度，确保界面实时响应
-        availableWidth = newSize.width
-        hasReceivedGeometry = true
-        
-        // 取消之前的结束检测计时器
-        resizeEndTimer?.invalidate()
-        
-        // 设置新的结束检测计时器（无变化视为调整结束）
-        resizeEndTimer = Timer.scheduledTimer(withTimeInterval: ListViewConstants.resizeEndDelay, repeats: false) { _ in
-            // 窗口调整结束，标记调整状态结束
-            isWindowResizing = false
-            print("窗口拉伸结束，可以触发加载操作")
+        viewState.resizeEndTimer?.invalidate()
+        viewState.resizeEndTimer = Timer.scheduledTimer(withTimeInterval: ListViewConstants.resizeEndDelay, repeats: false) { _ in
+            viewState.isWindowResizing = false
+            // 窗口调整结束，可以在此处添加额外的处理逻辑
         }
         
-        lastWindowSize = newSize
-    }
-}
-
-struct SmartImageThumbnailView: View {
-    let imageItem: ImageItem
-    let size: CGSize
-    let isSelected: Bool
-    let onTap: () -> Void
-    let onRightClick: () -> Void
-    let onDoubleClick: () -> Void
-    let viewModel: ImageBrowserViewModel // 添加ViewModel引用
-    
-    // 优化：使用ViewModel统一管理缩略图状态，避免重复的状态管理
-    @State private var thumbnail: NSImage?
-    
-    var body: some View {
-        Group {
-            if let thumbnail = thumbnail {
-                imageView(thumbnail)
-            } else {
-                // 统一使用placeholder视图，避免重复的加载状态管理
-                placeholderView
-            }
-        }
-        .onAppear {
-            loadThumbnail()
-        }
-        .onChange(of: imageItem.id) { _ in
-            // 当图片项发生变化时重新加载缩略图,不执行好像也没什么变化
-            // loadThumbnail()
-        }
-    }
-    
-    @ViewBuilder
-    private func imageView(_ thumbnail: NSImage) -> some View {
-        Image(nsImage: thumbnail)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: size.width, height: size.height)
-            .clipped()
-            .cornerRadius(ListViewConstants.cornerRadius)
-            .overlay(selectedBorder)
-            .scaleEffect(isSelected ? ListViewConstants.selectedScale : 1.0)
-            .animation(.easeInOut(duration: ListViewConstants.selectionAnimationDuration), value: isSelected)
-            .gesture(
-                TapGesture()
-                    .onEnded { _ in
-                        onTap()
-                        if NSApp.currentEvent?.clickCount == 2 {
-                            onDoubleClick()
-                        }
-                    }
-            )
-            .contextMenu {
-                contextMenuContent
-            }
-            .onDrag {
-                // 拖拽功能：提供文件URL
-                NSItemProvider(item: imageItem.url as NSURL, typeIdentifier: "public.file-url")
-            }
-    }
-    
-    @ViewBuilder
-    private var selectedBorder: some View {
-        RoundedRectangle(cornerRadius: ListViewConstants.cornerRadius)
-            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: ListViewConstants.selectedBorderWidth)
-    }
-    
-    @ViewBuilder
-    private var hoverEffect: some View {
-        RoundedRectangle(cornerRadius: ListViewConstants.cornerRadius)
-            .fill(Color.black.opacity(ListViewConstants.hoverOpacity))
-            .opacity(isSelected ? 1.0 : 0.0)
-    }
-    
-    @ViewBuilder
-    private var placeholderView: some View {
-        Image(systemName: "photo")
-            .font(.system(size: min(size.width, size.height) * ListViewConstants.placeholderIconScale))
-            .foregroundColor(.gray)
-            .frame(width: size.width, height: size.height)
-            .background(Color.gray.opacity(ListViewConstants.placeholderBackgroundOpacity))
-            .cornerRadius(ListViewConstants.cornerRadius)
-    }
-    
-    @ViewBuilder
-    private var contextMenuContent: some View {
-        Button("在 Finder 中显示") {
-            NSWorkspace.shared.selectFile(imageItem.url.path, inFileViewerRootedAtPath: "")
-        }
-        Button("删除") {
-            // 使用DispatchQueue.main.async来确保在主线程执行
-            DispatchQueue.main.async {
-                deleteImageWithConfirmation()
-            }
-        }
-    }
-    
-    @MainActor
-    private func deleteImageWithConfirmation() {
-        // 获取当前图片在数组中的索引
-        guard let index = viewModel.images.firstIndex(where: { $0.id == imageItem.id }) else { return }
-        
-        // 删除确认对话框
-        let alert = NSAlert()
-        alert.messageText = "确认删除"
-        alert.informativeText = "确定要删除这张图片吗？此操作会将图片移到废纸篓。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "删除")
-        alert.addButton(withTitle: "取消")
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            viewModel.deleteImage(at: index)
-        }
-    }
-    
-    @MainActor
-    private func loadThumbnail() {
-        // 重置缩略图状态，避免显示旧的缩略图
-        // thumbnail = nil
-        
-        viewModel.loadThumbnail(for: imageItem, size: size) { thumbnail in
-            self.thumbnail = thumbnail
-        }
+        viewState.lastWindowSize = newSize
     }
 }
 
 #Preview {
     ListView(viewModel: ImageBrowserViewModel())
+}
+
+// MARK: - LoadMoreIndicator
+// 加载更多指示器组件，用于在滚动到底部时触发数据加载
+struct LoadMoreIndicator: View {
+    let isLoading: Bool
+    let onLoadMore: () -> Void
+    let canLoad: Bool
+    
+    var body: some View {
+        VStack {
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.8)
+            } else {
+                Button(action: {
+                    onLoadMore()
+                }) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(
+            GeometryReader { geometry in
+                Color.clear
+                    .onChange(of: geometry.frame(in: .global).minY) { minY in
+                        if canLoad {
+                            let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
+                            if minY >= -geometry.size.height && minY < screenHeight {
+                                onLoadMore()
+                            }
+                        }
+                    }
+            }
+        )
+    }
+}
+
+#Preview {
+    LoadMoreIndicator(
+        isLoading: false,
+        onLoadMore: {},
+        canLoad: true
+    )
 }
