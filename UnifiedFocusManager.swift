@@ -3,35 +3,33 @@ import AppKit
 
 /// UnifiedFocusManager常量定义
 struct UnifiedFocusManagerConstants {
+    /// 按键定义
+    struct Key {
+        let keyCode: UInt16
+        let character: String
+        let description: String
+    }
+    
     /// 键盘事件相关常量
     struct KeyEvents {
-        /// 空格键键码 - 播放/暂停
-        static let spaceKeyCode: UInt16 = 49
-        /// 回车键键码 - 返回列表视图
-        static let returnKeyCode: UInt16 = 36
-        /// 上箭头键码 - 上一张图片
-        static let upArrowKeyCode: UInt16 = 126
-        /// 下箭头键码 - 下一张图片
-        static let downArrowKeyCode: UInt16 = 125
-        /// 右箭头键码 - 下一张图片
-        static let rightArrowKeyCode: UInt16 = 124
-        /// 左箭头键码 - 上一张图片
-        static let leftArrowKeyCode: UInt16 = 123
-        
-        /// 回车键字符 - 进入单张浏览模式
-        static let returnCharacter = "\r"
-        /// 上箭头Unicode字符
-        static let upArrowCharacter = "\u{F700}"
-        /// 下箭头Unicode字符
-        static let downArrowCharacter = "\u{F701}"
-        /// 左箭头Unicode字符
-        static let leftArrowCharacter = "\u{F703}"
-        /// 右箭头Unicode字符
-        static let rightArrowCharacter = "\u{F702}"
-        /// 减号键字符 - 缩小缩略图
-        static let minusCharacter = "-"
-        /// 等号键字符 - 放大缩略图
-        static let equalsCharacter = "="
+        /// 空格键 - 播放/暂停
+        static let space = Key(keyCode: 49, character: " ", description: "播放/暂停")
+        /// 回车键 - 返回列表视图/进入单张浏览模式
+        static let `return` = Key(keyCode: 36, character: "\r", description: "返回列表视图/进入单张浏览模式")
+        /// 上箭头 - 上一张图片
+        static let upArrow = Key(keyCode: 126, character: "\u{F700}", description: " ")
+        /// 下箭头 - 在Finder中显示
+        static let downArrow = Key(keyCode: 125, character: "\u{F701}", description: "在Finder中显示")
+        /// 右箭头 - 下一张图片
+        static let rightArrow = Key(keyCode: 124, character: "\u{F702}", description: "下一张图片")
+        /// 左箭头 - 上一张图片
+        static let leftArrow = Key(keyCode: 123, character: "\u{F703}", description: "上一张图片")
+        /// 删除键 - 删除选中图片
+        static let delete = Key(keyCode: 51, character: "\u{007F}", description: "删除选中图片")
+        /// 减号键 - 缩小缩略图
+        static let minus = Key(keyCode: 27, character: "-", description: "缩小缩略图")
+        /// 等号键 - 放大缩略图
+        static let equals = Key(keyCode: 24, character: "=", description: "放大缩略图")
     }
     
     /// 滚动事件相关常量
@@ -49,35 +47,13 @@ struct UnifiedFocusManagerConstants {
     /// 焦点管理相关方法
     struct FocusMethods {
         /// 安全设置第一响应者
-        /// - Parameters:
-        ///   - view: 要设置焦点的视图
-        ///   - checkCurrentResponder: 是否检查当前响应者状态，默认为true（推荐）
-        static func safeSetFirstResponder(_ view: NSView, checkCurrentResponder: Bool = true) {
+        /// - Parameter view: 要设置焦点的视图
+        static func safeSetFirstResponder(_ view: NSView) {
             DispatchQueue.main.asyncAfter(deadline: .now() + Delays.setFocusDelay) {
-                if checkCurrentResponder {
-                    // 带检查的版本：只有当视图不是当前第一响应者时才设置
-                    if view.acceptsFirstResponder && view.window?.firstResponder != view {
-                    view.window?.makeFirstResponder(view)
-                }
-                } else {
-                    // 无检查的版本：直接设置第一响应者
+                if view.acceptsFirstResponder && view.window?.firstResponder != view {
                     view.window?.makeFirstResponder(view)
                 }
             }
-        }
-        
-        // 为向后兼容性保留的便捷方法
-        
-        /// 安全设置第一响应者（无检查）
-        /// - Parameter view: 要设置焦点的视图
-        static func safeSetFirstResponder(_ view: NSView) {
-            safeSetFirstResponder(view, checkCurrentResponder: false)
-        }
-        
-        /// 安全设置第一响应者（带检查）
-        /// - Parameter view: 要设置焦点的视图
-        static func safeSetFirstResponderWithCheck(_ view: NSView) {
-            safeSetFirstResponder(view, checkCurrentResponder: true)
         }
     }
     
@@ -116,7 +92,7 @@ class UnifiedFocusView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         
-        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
+        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponder(self)
         
         NotificationCenter.default.addObserver(
             self,
@@ -130,7 +106,7 @@ class UnifiedFocusView: NSView {
         guard let viewModel = viewModel, !viewModel.isSingleViewMode else { return }
         
         DispatchQueue.main.asyncAfter(deadline: .now() + UnifiedFocusManagerConstants.Delays.setFocusDelay) {
-            UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
+            UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponder(self)
         }
     }
     
@@ -148,6 +124,7 @@ class UnifiedFocusView: NSView {
         if viewModel.isSingleViewMode {
             handleSingleViewKeyEvents(event: event, viewModel: viewModel)
         } else {
+            // 列表模式
             handleListViewKeyEvents(event: event, viewModel: viewModel)
         }
     }
@@ -161,23 +138,59 @@ class UnifiedFocusView: NSView {
         let keyCode = event.keyCode
         
         switch keyCode {
-        case UnifiedFocusManagerConstants.KeyEvents.spaceKeyCode:  // 空格键 - 播放/暂停
+        case UnifiedFocusManagerConstants.KeyEvents.space.keyCode:  // 空格键 - 播放/暂停
             viewModel.toggleAutoPlay()
-        case UnifiedFocusManagerConstants.KeyEvents.returnKeyCode:  // 回车键 - 返回列表视图
+        case UnifiedFocusManagerConstants.KeyEvents.return.keyCode:  // 回车键 - 返回列表视图
             returnToListView(viewModel: viewModel)
-        case UnifiedFocusManagerConstants.KeyEvents.upArrowKeyCode:  // 上箭头 - 上一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.upArrow.keyCode:  // 上箭头 
             break
-        case UnifiedFocusManagerConstants.KeyEvents.downArrowKeyCode:  // 下箭头 - 下一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.downArrow.keyCode:  // 下箭头 - 在Finder中显示
             viewModel.stopAutoPlay()
-            NSWorkspace.shared.selectFile(viewModel.images[viewModel.currentImageIndex].url.path, inFileViewerRootedAtPath: "")
-        case UnifiedFocusManagerConstants.KeyEvents.rightArrowKeyCode:  // 右箭头 - 下一张图片
+            print("Single view down arrow: currentImageIndex = \(viewModel.currentImageIndex)")
+            viewModel.revealInFinder(at: viewModel.currentImageIndex)
+        case UnifiedFocusManagerConstants.KeyEvents.rightArrow.keyCode:  // 右箭头 - 下一张图片
             viewModel.stopAutoPlay()
             viewModel.nextImage()
-        case UnifiedFocusManagerConstants.KeyEvents.leftArrowKeyCode:  // 左箭头 - 上一张图片
+        case UnifiedFocusManagerConstants.KeyEvents.leftArrow.keyCode:  // 左箭头 - 上一张图片
             viewModel.stopAutoPlay()
             viewModel.previousImage()
+        case UnifiedFocusManagerConstants.KeyEvents.delete.keyCode:  // 删除键 - 删除当前图片
+            viewModel.stopAutoPlay()
+            viewModel.deleteImage(at: viewModel.currentImageIndex)
         default:
             super.keyDown(with: event)
+        }
+    }
+    
+    private func handleDeleteKeyEvent(event: NSEvent, viewModel: ImageBrowserViewModel) {
+        // 检查是否有选中的图片
+        if !viewModel.selectedImages.isEmpty {
+            // 获取所有选中图片的索引（按降序排列，避免删除时索引变化）
+            let selectedIndices = viewModel.selectedImages.compactMap { selectedId in
+                viewModel.images.firstIndex { $0.id == selectedId }
+            }.sorted(by: >) // 降序排列，从后往前删除
+            
+            // 删除所有选中的图片
+            for index in selectedIndices {
+                viewModel.deleteImage(at: index)
+            }
+        } else if !viewModel.images.isEmpty {
+            // 如果没有选中的图片，删除当前图片
+            viewModel.deleteImage(at: viewModel.currentImageIndex)
+        }
+    }
+    
+    private func handleRevealInFinderKeyEvent(event: NSEvent, viewModel: ImageBrowserViewModel) {
+        // 检查是否有选中的图片
+        if !viewModel.selectedImages.isEmpty {
+            // 如果有选中的图片，在Finder中显示第一个选中的图片
+            if let firstSelectedId = viewModel.selectedImages.first,
+               let index = viewModel.images.firstIndex(where: { $0.id == firstSelectedId }) {
+                viewModel.revealInFinder(at: index)
+            }
+        } else if !viewModel.images.isEmpty {
+            // 如果没有选中的图片，在Finder中显示当前图片
+            viewModel.revealInFinder(at: viewModel.currentImageIndex)
         }
     }
     
@@ -193,7 +206,7 @@ class UnifiedFocusView: NSView {
         }
         
         switch characters {
-        case UnifiedFocusManagerConstants.KeyEvents.returnCharacter:  // 回车键 - 进入单张浏览模式
+        case UnifiedFocusManagerConstants.KeyEvents.return.character:  // 回车键 - 进入单张浏览模式
             if !viewModel.selectedImages.isEmpty {
                 if let firstSelectedId = viewModel.selectedImages.first,
                    let index = viewModel.images.firstIndex(where: { $0.id == firstSelectedId }) {
@@ -202,18 +215,20 @@ class UnifiedFocusView: NSView {
             } else if !viewModel.images.isEmpty {
                 viewModel.selectImage(at: viewModel.currentImageIndex)
             }
-        case UnifiedFocusManagerConstants.KeyEvents.upArrowCharacter:  // 上箭头
+        case UnifiedFocusManagerConstants.KeyEvents.upArrow.character:  // 上箭头
             break
-        case UnifiedFocusManagerConstants.KeyEvents.downArrowCharacter:  // 下箭头
-            break
-        case UnifiedFocusManagerConstants.KeyEvents.leftArrowCharacter:  // 左箭头
+        case UnifiedFocusManagerConstants.KeyEvents.downArrow.character:  // 下箭头 - 在Finder中显示
+            handleRevealInFinderKeyEvent(event: event, viewModel: viewModel)
+        case UnifiedFocusManagerConstants.KeyEvents.leftArrow.character:  // 左箭头
             viewModel.navigateSelection(direction: .left)  // 左箭头向左选择
-        case UnifiedFocusManagerConstants.KeyEvents.rightArrowCharacter:  // 右箭头
+        case UnifiedFocusManagerConstants.KeyEvents.rightArrow.character:  // 右箭头
             viewModel.navigateSelection(direction: .right)  // 右箭头向右选择
-        case UnifiedFocusManagerConstants.KeyEvents.minusCharacter:  // 减号键 - 缩小缩略图
-            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.minusCharacter)
-        case UnifiedFocusManagerConstants.KeyEvents.equalsCharacter:  // 等号键 - 放大缩略图
-            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.equalsCharacter)
+        case UnifiedFocusManagerConstants.KeyEvents.minus.character:  // 减号键 - 缩小缩略图
+            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.minus.character)
+        case UnifiedFocusManagerConstants.KeyEvents.equals.character:  // 等号键 - 放大缩略图
+            viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.equals.character)
+        case UnifiedFocusManagerConstants.KeyEvents.delete.character:  // 删除键 - 删除选中图片
+            handleDeleteKeyEvent(event: event, viewModel: viewModel)
         default:
             super.keyDown(with: event)
         }
@@ -256,7 +271,7 @@ class UnifiedFocusView: NSView {
     }
     
     override func mouseDown(with event: NSEvent) {
-        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponderWithCheck(self)
+        UnifiedFocusManagerConstants.FocusMethods.safeSetFirstResponder(self)
         super.mouseDown(with: event)
     }
     
@@ -297,13 +312,5 @@ struct UnifiedKeyboardListener: NSViewRepresentable {
             ])
         }
         
-        switch mode {
-        case .list:
-            if !viewModel.isSingleViewMode {
-            }
-        case .single:
-            if viewModel.isSingleViewMode {
-            }
-        }
     }
 }

@@ -55,6 +55,27 @@ struct ViewStyles {
         static let easeInOutMedium = Animation.easeInOut(duration: 0.15)
         static let easeInOutLong = Animation.easeInOut(duration: 0.3)
     }
+    
+    // MARK: - 按钮样式
+    struct Buttons {
+        /// 播放/暂停按钮尺寸
+        static let playPauseButtonSize: CGFloat = 50
+        
+        /// 播放/暂停按钮内边距
+        static let playPauseButtonPadding: CGFloat = 8
+        
+        /// 播放/暂停按钮背景透明度
+        static let playPauseButtonBackgroundOpacity: Double = 0.3
+        
+        /// 播放/暂停按钮悬停时背景透明度
+        static let playPauseButtonHoverOpacity: Double = 0.8
+        
+        /// 播放/暂停按钮圆角半径
+        static let playPauseButtonCornerRadius: CGFloat = 25
+        
+        /// 播放/暂停按钮图标大小
+        static let playPauseIconSize: CGFloat = 24
+    }
 }
 
 
@@ -148,5 +169,81 @@ struct UnifiedStateViews {
                 .foregroundColor(Color.secondary.opacity(0.7))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 播放/暂停按钮组件
+struct PlayPauseButton: View {
+    let isAutoPlaying: Bool
+    let action: () -> Void
+    
+    @State private var isHovered = false
+    @State private var isPressed = false
+    @State private var isMouseOut = false
+    @State private var mouseOutTimer: Timer?
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(ViewStyles.Buttons.playPauseButtonBackgroundOpacity))
+                    .frame(width: ViewStyles.Buttons.playPauseButtonSize, 
+                           height: ViewStyles.Buttons.playPauseButtonSize)
+                
+                Image(systemName: isAutoPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: ViewStyles.Buttons.playPauseIconSize))
+                    .foregroundColor(.white)
+            }
+        }
+        .buttonStyle(PlayPauseButtonStyle(isPressed: $isPressed))
+        .cornerRadius(ViewStyles.Buttons.playPauseButtonCornerRadius)
+        .help(isAutoPlaying ? "暂停自动播放" : "开始自动播放")
+        .scaleEffect(buttonScale)
+        .opacity(buttonOpacity)
+        .onHover { hovering in
+            isHovered = hovering
+            
+            // 鼠标移入时取消计时器并恢复不透明度
+            if hovering {
+                mouseOutTimer?.invalidate()
+                mouseOutTimer = nil
+                isMouseOut = false
+            } else {
+                // 鼠标移出时启动1秒后变透明的计时器
+                mouseOutTimer?.invalidate()
+                mouseOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                    isMouseOut = true
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: buttonScale)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .animation(.easeInOut(duration: 0.3), value: buttonOpacity)
+    }
+    
+    private var buttonScale: Double {
+        isPressed ? 1.0 : (isHovered ? 1.1 : 1.0)
+    }
+    
+    private var buttonOpacity: Double {
+        if isPressed {
+            return 0.8 // 按下时变暗
+        } else if isMouseOut {
+            return 0.2 // 鼠标移出后变透明
+        } else {
+            return 0.5 // 正常状态
+        }
+    }
+    
+    // 播放/暂停按钮样式（处理按下状态）
+    private struct PlayPauseButtonStyle: ButtonStyle {
+        @Binding var isPressed: Bool
+        
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .onChange(of: configuration.isPressed) { pressed in
+                    isPressed = pressed
+                }
+        }
     }
 }

@@ -13,17 +13,10 @@ struct SmartImageThumbnailView: View {
     @State private var thumbnail: NSImage?
     
     var body: some View {
-        Group {
-            if let thumbnail = thumbnail {
-                imageView(thumbnail)
-            } else {
-                // 统一使用placeholder视图，避免重复的加载状态管理
-                placeholderView
+        thumbnailContainer
+            .onAppear {
+                loadThumbnail()
             }
-        }
-        .onAppear {
-            loadThumbnail()
-        }
     }
     
     @ViewBuilder
@@ -34,25 +27,38 @@ struct SmartImageThumbnailView: View {
             .frame(width: size.width, height: size.height)
             .clipped()
             .cornerRadius(ListViewConstants.cornerRadius)
-            .overlay(hoverEffect)
-            .overlay(selectedBorder)
-            // .animation(.easeInOut(duration: ListViewConstants.selectionAnimationDuration), value: isSelected)
-            .gesture(
-                TapGesture()
-                    .onEnded { _ in
-                        onTap()
-                        if NSApp.currentEvent?.clickCount == 2 {
-                            onDoubleClick()
-                        }
+    }
+    
+    @ViewBuilder
+    private var thumbnailContainer: some View {
+        ZStack {
+            if let thumbnail = thumbnail {
+                imageView(thumbnail)
+            } else {
+                placeholderView
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .overlay(hoverEffect)
+        .overlay(selectedBorder)
+        // .animation(.easeInOut(duration: ListViewConstants.selectionAnimationDuration), value: isSelected)
+        .contentShape(Rectangle()) // 确保整个区域都可点击
+        .gesture(
+            TapGesture()
+                .onEnded { _ in
+                    onTap()
+                    if NSApp.currentEvent?.clickCount == 2 {
+                        onDoubleClick()
                     }
-            )
-            .contextMenu {
-                contextMenuContent
-            }
-            .onDrag {
-                // 拖拽功能：提供文件URL
-                NSItemProvider(item: imageItem.url as NSURL, typeIdentifier: "public.file-url")
-            }
+                }
+        )
+        .contextMenu {
+            contextMenuContent
+        }
+        .onDrag {
+            // 拖拽功能：提供文件URL
+            NSItemProvider(item: imageItem.url as NSURL, typeIdentifier: "public.file-url")
+        }
     }
     
     @ViewBuilder
@@ -81,31 +87,20 @@ struct SmartImageThumbnailView: View {
     @ViewBuilder
     private var contextMenuContent: some View {
         Button("在 Finder 中显示") {
-            NSWorkspace.shared.selectFile(imageItem.url.path, inFileViewerRootedAtPath: "")
+            // 使用DispatchQueue.main.async来确保在主线程执行
+            DispatchQueue.main.async {
+                // 获取当前图片在数组中的索引
+                guard let index = viewModel.images.firstIndex(where: { $0.id == imageItem.id }) else { return }
+                viewModel.revealInFinder(at: index)
+            }
         }
         Button("删除") {
             // 使用DispatchQueue.main.async来确保在主线程执行
             DispatchQueue.main.async {
-                deleteImageWithConfirmation()
+                // 获取当前图片在数组中的索引
+                guard let index = viewModel.images.firstIndex(where: { $0.id == imageItem.id }) else { return }
+                viewModel.deleteImage(at: index)
             }
-        }
-    }
-    
-    @MainActor
-    private func deleteImageWithConfirmation() {
-        // 获取当前图片在数组中的索引
-        guard let index = viewModel.images.firstIndex(where: { $0.id == imageItem.id }) else { return }
-        
-        // 删除确认对话框
-        let alert = NSAlert()
-        alert.messageText = "确认删除"
-        alert.informativeText = "确定要删除这张图片吗？此操作会将图片移到废纸篓。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "删除")
-        alert.addButton(withTitle: "取消")
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            viewModel.deleteImage(at: index)
         }
     }
     

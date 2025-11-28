@@ -266,6 +266,9 @@ struct LoadMoreIndicator: View {
     let onLoadMore: () -> Void
     let canLoad: Bool
     
+    // 防止重复触发的状态
+    @State private var hasTriggeredLoadMore = false
+    
     var body: some View {
         VStack {
             if isLoading {
@@ -288,10 +291,16 @@ struct LoadMoreIndicator: View {
             GeometryReader { geometry in
                 Color.clear
                     .onChange(of: geometry.frame(in: .global).minY) { minY in
-                        if canLoad {
+                        if canLoad && !isLoading && !hasTriggeredLoadMore {
                             let screenHeight = NSScreen.main?.visibleFrame.height ?? 0
+
                             if minY >= -geometry.size.height && minY < screenHeight {
+                                hasTriggeredLoadMore = true
                                 onLoadMore()
+                                // 加载完成后重置状态
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    hasTriggeredLoadMore = false
+                                }
                             }
                         }
                     }

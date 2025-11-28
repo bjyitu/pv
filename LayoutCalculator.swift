@@ -49,8 +49,11 @@ class LayoutCalculator {
     /// 计算图片尺寸
     func calculateImageSize(for imagesCount: Int, availableWidth: CGFloat, from images: [ImageItem]) -> CGSize {
         let effectiveWidth = calculateEffectiveWidth(availableWidth: availableWidth)
-        let totalSpacing = CGFloat(imagesCount - 1) * ListViewConstants.spacing
-        let availableImageWidth = (effectiveWidth - totalSpacing) / CGFloat(imagesCount)
+        
+        // 始终按照每行6张图片的标准来计算尺寸，确保布局一致性
+        let standardImagesPerRow = ListViewConstants.imagesPerRow
+        let totalSpacing = CGFloat(standardImagesPerRow - 1) * ListViewConstants.spacing
+        let availableImageWidth = (effectiveWidth - totalSpacing) / CGFloat(standardImagesPerRow)
         
         // 采样前六张图片计算平均宽高比
         let sampleSize = min(images.count, 6) // 最多采样前六张

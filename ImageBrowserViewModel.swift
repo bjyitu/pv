@@ -8,10 +8,7 @@ struct ImageBrowserViewModelConstants {
     
     /// 默认缩略图大小（像素）
     static let defaultThumbnailSize: CGFloat = 200
-    
-    /// 支持的图片文件扩展名
-    static let supportedImageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
-    
+ 
     /// 视图切换延迟时间（秒），用于确保焦点正确设置
     static let viewSwitchDelay: TimeInterval = 0.2
     
@@ -78,7 +75,8 @@ class ImageBrowserViewModel: ObservableObject {
     
     private var autoPlayTimer: Timer?
     
-    private let imageExtensions = ImageBrowserViewModelConstants.supportedImageExtensions
+    private let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
+    
     
     // 分页加载配置
     private struct PaginationConfig {
@@ -198,35 +196,6 @@ class ImageBrowserViewModel: ObservableObject {
         }
     }
     
-    private func scanDirectoryRecursively(_ directory: URL) -> [ImageItem] {
-        var images: [ImageItem] = []
-        
-        do {
-            let fileManager = FileManager.default
-            let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
-            
-            for url in contents {
-                if images.count >= maxInitialImages {
-                    break
-                }
-                
-                let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
-                if resourceValues.isDirectory == true {
-                    let subImages = scanDirectoryRecursively(url)
-                    let remainingCapacity = maxInitialImages - images.count
-                    if remainingCapacity > 0 {
-                        images.append(contentsOf: subImages.prefix(remainingCapacity))
-                    }
-                } else if isImageFile(url) {
-                    images.append(ImageItem(url: url, directoryName: directory.lastPathComponent))
-                }
-            }
-        } catch {
-        }
-        
-        return images
-    }
-    
     // 完整扫描目录，不限制数量
     private func scanDirectoryRecursivelyComplete(_ directory: URL) -> [ImageItem] {
         var images: [ImageItem] = []
@@ -303,7 +272,6 @@ class ImageBrowserViewModel: ObservableObject {
     func ensureFullDirectoryContent() {
         // 如果当前显示的不是完整目录内容，重新加载完整内容
         if images.count < allScannedImages.count {
-            print(String(format: ImageBrowserViewModelConstants.LogMessages.returnFromSingleView, images.count, allScannedImages.count))
             images = allScannedImages
             
             // 更新目录组以显示完整内容
@@ -475,32 +443,6 @@ class ImageBrowserViewModel: ObservableObject {
         lastSelectedIndex = index
     }
     
-    func toggleImageSelectionWithoutScroll(at index: Int, withShift: Bool = false, withCommand: Bool = false) {
-        guard images.indices.contains(index) else { return }
-        let imageId = images[index].id
-        
-        if withCommand {
-            if selectedImages.contains(imageId) {
-                selectedImages.remove(imageId)
-            } else {
-                selectedImages.insert(imageId)
-            }
-        } else if withShift {
-            let startIndex = min(lastSelectedIndex, index)
-            let endIndex = max(lastSelectedIndex, index)
-            
-            for i in startIndex...endIndex {
-                if images.indices.contains(i) {
-                    selectedImages.insert(images[i].id)
-                }
-            }
-        } else {
-            selectedImages = [imageId]
-        }
-        
-        lastSelectedIndex = index
-    }
-    
     func clearSelection() {
         selectedImages.removeAll()
     }
@@ -536,14 +478,6 @@ class ImageBrowserViewModel: ObservableObject {
         print(String(format: ImageBrowserViewModelConstants.LogMessages.loadMoreImages, startIndex, endIndex-1, images.count))
     }
     
-    private func getFirstSelectedIndex() -> Int {
-        guard let firstSelectedId = selectedImages.first,
-              let index = images.firstIndex(where: { $0.id == firstSelectedId }) else {
-            return 0
-        }
-        return index
-    }
-    
     func navigateSelection(direction: Direction) {
         guard !images.isEmpty else { return }
         
@@ -569,67 +503,92 @@ class ImageBrowserViewModel: ObservableObject {
     }
     
     func revealInFinder(at index: Int) {
-        guard images.indices.contains(index) else { return }
-        let image = images[index]
-        NSWorkspace.shared.selectFile(image.url.path, inFileViewerRootedAtPath: image.url.deletingLastPathComponent().path)
-    }
-    
-    func deleteSelectedImages() {
-        guard !selectedImages.isEmpty else { return }
-        
-        let fileManager = FileManager.default
-        var deletedCount = 0
-        
-        for imageId in selectedImages {
-            if let image = images.first(where: { $0.id == imageId }) {
-                do {
-                    try fileManager.trashItem(at: image.url, resultingItemURL: nil)
-                    deletedCount += 1
-                } catch {
-                    DispatchQueue.main.async {
-                        self.errorMessage = String(format: ImageBrowserViewModelConstants.ErrorMessages.imageDeleteFailed, error.localizedDescription)
-                    }
-                    return
-                }
-            }
-        }
-        
-        DispatchQueue.main.async {
-            self.images.removeAll { self.selectedImages.contains($0.id) }
-            self.selectedImages.removeAll()
+        // 确保在主线程执行，避免自动播放定时器导致的线程同步问题
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             
-            if deletedCount > 0 {
+            guard self.images.indices.contains(index) else {
+                return
             }
+            let image = self.images[index]
+            
+            // 使用activateFileViewerSelecting方法（更现代的方法）
+            NSWorkspace.shared.activateFileViewerSelecting([image.url])
         }
     }
     
+    @MainActor
     func deleteImage(at index: Int) {
         guard images.indices.contains(index) else { return }
         let image = images[index]
         
-        do {
-            try FileManager.default.trashItem(at: image.url, resultingItemURL: nil)
-            
-            var updatedGroups = directoryGroups
-            for i in 0..<updatedGroups.count {
-                updatedGroups[i].images.removeAll { $0.id == image.id }
+        // 删除确认对话框
+        let alert = NSAlert()
+        alert.messageText = "确认删除"
+        alert.informativeText = "确定要删除这张图片吗？此操作会将图片移到废纸篓。"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "删除")
+        alert.addButton(withTitle: "取消")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            do {
+                try FileManager.default.trashItem(at: image.url, resultingItemURL: nil)
+                
+                var updatedGroups = directoryGroups
+                for i in 0..<updatedGroups.count {
+                    updatedGroups[i].images.removeAll { $0.id == image.id }
+                }
+                
+                updatedGroups.removeAll { $0.images.isEmpty }
+                
+                directoryGroups = updatedGroups
+                images = updatedGroups.flatMap { $0.images }
+                
+                // 更新allScannedImages数组，确保总数正确
+                allScannedImages.removeAll { $0.id == image.id }
+                
+                // 更新窗口标题栏中的总数信息
+                if isSingleViewMode && !images.isEmpty {
+                    let currentImage = images[lastSelectedIndex]
+                    UnifiedWindowManager.shared.updateTitle(for: currentImage, index: lastSelectedIndex, total: allScannedImages.count)
+                }
+                
+                // 修复选择逻辑：删除后正确更新选择状态
+                selectedImages.remove(image.id)
+                
+                // 如果删除的是当前选中的图片，需要重新设置选择
+                if lastSelectedIndex == index {
+                    // 如果还有剩余图片，选择删除位置附近的图片
+                    if !images.isEmpty {
+                        let newIndex = min(index, images.count - 1)
+                        if newIndex >= 0 {
+                            selectedImages.insert(images[newIndex].id)
+                            lastSelectedIndex = newIndex
+                            
+                            // 通知窗口管理器滚动到新位置
+                            UnifiedWindowManager.shared.scrollToImage(at: newIndex)
+                        }
+                    } else {
+                        // 没有剩余图片，清空选择
+                        selectedImages.removeAll()
+                        lastSelectedIndex = 0
+                    }
+                } else if lastSelectedIndex > index {
+                    // 如果删除的图片在lastSelectedIndex之前，需要调整lastSelectedIndex
+                    lastSelectedIndex = max(0, lastSelectedIndex - 1)
+                }
+                
+            } catch {
+                // 处理删除失败的情况
+                print("删除图片失败: \(error)")
             }
-            
-            updatedGroups.removeAll { $0.images.isEmpty }
-            
-            directoryGroups = updatedGroups
-            images = updatedGroups.flatMap { $0.images }
-            
-            selectedImages.remove(image.id)
-            
-        } catch {
         }
     }
     
     
-    private var scrollProxy: Any?
+    private var scrollProxy: ScrollViewProxy?
     
-    func setScrollProxy(_ proxy: Any) {
+    func setScrollProxy(_ proxy: ScrollViewProxy) {
         scrollProxy = proxy
     }
     
@@ -702,43 +661,14 @@ class ImageBrowserViewModel: ObservableObject {
         }
     }
     
-    var thumbnailSize: CGFloat {
-        let minSize = baseThumbnailSize * 0.5  // 50% of base
-        let maxSize = baseThumbnailSize * 2.0  // 200% of base
-        return max(minSize, min(maxSize, manualThumbnailSize))
-    }
-    
-    
     func handleKeyPress(_ key: String) {
         
         switch key {
         case "-":
             // 缩图大小基本是由listlayout决定,这个调整暂不处理
-            // let newSize = manualThumbnailSize * 0.80
-            // let minSize = baseThumbnailSize * 0.5
-            
-            // if newSize >= minSize {
-            //     manualThumbnailSize = newSize
-                
-            //     // cacheManager.clearSmartRowCache()
-                
-            //     objectWillChange.send()
-            // } else {
-            // }
             break
         case "=":
             // 缩图大小基本是由listlayout决定,这个调整暂不处理
-            // let newSize = manualThumbnailSize * 1.20
-            // let maxSize = baseThumbnailSize * 2.0
-            
-            // if newSize <= maxSize {
-            //     manualThumbnailSize = newSize
-                
-            //     // cacheManager.clearSmartRowCache()
-                
-            //     objectWillChange.send()
-            // } else {
-            // }
             break
         default:
             break

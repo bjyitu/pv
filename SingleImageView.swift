@@ -139,7 +139,29 @@ struct SingleImageView: View {
         .onDisappear {
             // 离开时恢复
             NSApp.keyWindow?.isMovableByWindowBackground = false
-        }        
+        }
+        .overlay(
+            // 播放/暂停按钮 - 放在左下角
+            VStack {
+                Spacer()
+                HStack {
+                    playPauseButton
+                        .padding(.leading, 20)
+                        .padding(.bottom, 20)
+                    Spacer()
+                }
+            }
+        )
+    }
+    
+    // 播放/暂停按钮
+    private var playPauseButton: some View {
+        PlayPauseButton(
+            isAutoPlaying: viewModel.isAutoPlaying,
+            action: {
+                viewModel.toggleAutoPlay()
+            }
+        )
     }
     
     private func adjustWindowForCurrentImage() {
