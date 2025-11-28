@@ -40,7 +40,7 @@ struct SingleImageViewConstants {
     static let targetScale: CGFloat = 1.15
     
     /// 进度条高度（像素）
-    static let progressBarHeight: CGFloat = 4
+    static let progressBarHeight: CGFloat = 2
     
     /// 自动加载更多图片的阈值（距离末尾的图片数量）
     static let loadMoreThreshold: Int = 5
@@ -64,6 +64,7 @@ struct SingleImageViewConstants {
 struct SingleImageView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
     @State private var scale: CGFloat = SingleImageViewConstants.initialScale
+    @State private var animationProgress: CGFloat = 0.0
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -81,16 +82,13 @@ struct SingleImageView: View {
             if viewModel.showProgressBar {
                 VStack {
                     Spacer()
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Color.accentColor.opacity(0.8))
-                            .frame(
-                                width: geometry.size.width * CGFloat(viewModel.currentImageIndex + 1) / CGFloat(viewModel.totalImagesInDirectory),
-                                height: 4
-                            )
-                            .animation(.linear, value: viewModel.currentImageIndex)
-                    }
-                    .frame(height: SingleImageViewConstants.progressBarHeight)
+                    UnifiedProgressBar(
+                        currentIndex: viewModel.currentImageIndex,
+                        totalItems: viewModel.totalImagesInDirectory,
+                        isAutoPlaying: viewModel.isAutoPlaying,
+                        animationProgress: animationProgress,
+                        autoPlayInterval: viewModel.autoPlayInterval
+                    )
                 }
             }
         }
@@ -135,6 +133,16 @@ struct SingleImageView: View {
             
             // 检测是否接近图片列表末尾，自动加载更多图片
             checkAndLoadMoreIfNeeded()
+            
+            // 重置动画进度
+            resetAnimationProgress()
+        }
+        .onChange(of: viewModel.isAutoPlaying) { isAutoPlaying in
+            if isAutoPlaying {
+                resetAnimationProgress()
+            } else {
+                animationProgress = 0.0
+            }
         }
         .onDisappear {
             // 离开时恢复
@@ -186,6 +194,17 @@ struct SingleImageView: View {
         if currentIndex >= totalImages - threshold && viewModel.canLoadMore && !viewModel.isLoadingMore {
             print("SingleImageView: 接近列表末尾，自动加载更多图片 (当前索引: \(currentIndex), 总数: \(totalImages))")
             viewModel.loadMoreImages()
+        }
+    }
+    
+    private func resetAnimationProgress() {
+        animationProgress = 0.0
+        
+        // 启动动画
+        if viewModel.isAutoPlaying {
+            withAnimation(.linear(duration: viewModel.autoPlayInterval)) {
+                animationProgress = 1.0
+            }
         }
     }
     

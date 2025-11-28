@@ -247,3 +247,73 @@ struct PlayPauseButton: View {
         }
     }
 }
+
+// MARK: - 进度条样式和组件
+struct ProgressBarStyles {
+    /// 进度条高度（像素）
+    static let progressBarHeight: CGFloat = 2
+    
+    /// 进度条背景透明度
+    static let progressBarBackgroundOpacity: Double = 0.3
+    
+    /// 进度条前景透明度
+    static let progressBarForegroundOpacity: Double = 0.8
+    
+    /// 进度条动画持续时间
+    static let progressBarAnimationDuration: Double = 0.3
+}
+
+// MARK: - 统一进度条组件
+struct UnifiedProgressBar: View {
+    let currentIndex: Int
+    let totalItems: Int
+    let isAutoPlaying: Bool
+    let animationProgress: CGFloat
+    let autoPlayInterval: TimeInterval
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                // 背景条（整个进度条区域）
+                Rectangle()
+                    .fill(Color.black.opacity(ProgressBarStyles.progressBarBackgroundOpacity))
+                    .frame(width: geometry.size.width, height: ProgressBarStyles.progressBarHeight)
+                
+                // 动画层 - 根据剩余宽度调整速度的渐变填充动画
+                if isAutoPlaying {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(1.0),
+                                    Color.white.opacity(1.0),
+                                    Color.white.opacity(1.0),
+                                    Color.white.opacity(0.0)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(
+                            width: animationProgress * geometry.size.width * CGFloat(currentIndex + 2) / CGFloat(totalItems),
+                            height: ProgressBarStyles.progressBarHeight
+                        )
+                        .offset(x: 0) // 从当前进度位置开始
+                        .blendMode(.overlay)
+                        .zIndex(1) // 确保动画层在主进度条之上
+                }
+                
+                // 主进度条
+                Rectangle()
+                    .fill(Color.accentColor.opacity(ProgressBarStyles.progressBarForegroundOpacity))
+                    .frame(
+                        width: geometry.size.width * CGFloat(currentIndex) / CGFloat(totalItems),
+                        height: ProgressBarStyles.progressBarHeight
+                    )
+                    .animation(.easeInOut(duration: ProgressBarStyles.progressBarAnimationDuration), value: currentIndex)
+            }
+        }
+        .frame(height: ProgressBarStyles.progressBarHeight)
+    }
+}
