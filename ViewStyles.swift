@@ -296,10 +296,13 @@ struct UnifiedProgressBar: View {
                             )
                         )
                         .frame(
-                            width: animationProgress * geometry.size.width * CGFloat(currentIndex + 2) / CGFloat(totalItems),
-                            height: ProgressBarStyles.progressBarHeight
+                            // width: animationProgress * geometry.size.width * (1 - (CGFloat(currentIndex + 1) / CGFloat(totalItems))), //剩余进度宽度
+                            width: animationProgress * geometry.size.width * CGFloat(currentIndex) / CGFloat(totalItems),
+                            height: ProgressBarStyles.progressBarHeight - 1
                         )
-                        .offset(x: 0) // 从当前进度位置开始
+                        // .offset(x: geometry.size.width * CGFloat(currentIndex) / CGFloat(totalItems)) // 从剩余进度位置开始
+                        // 从0开始覆盖现有进度条的方案,width也需要调成当前进度的宽度
+                        .offset(x: 0)
                         .blendMode(.overlay)
                         .zIndex(1) // 确保动画层在主进度条之上
                 }
@@ -311,7 +314,7 @@ struct UnifiedProgressBar: View {
                         width: geometry.size.width * CGFloat(currentIndex) / CGFloat(totalItems),
                         height: ProgressBarStyles.progressBarHeight
                     )
-                    .animation(.easeInOut(duration: ProgressBarStyles.progressBarAnimationDuration), value: currentIndex)
+                    .animation(.linear(duration: ProgressBarStyles.progressBarAnimationDuration), value: currentIndex)
             }
         }
         .frame(height: ProgressBarStyles.progressBarHeight)
