@@ -55,10 +55,15 @@ struct ListViewConstants {
 // 固定网格布局的行结构
 struct FixedGridRow {
     let images: [ImageItem]
-    let imageSize: CGSize
+    let imageSizes: [CGSize] // 改为数组，存储每张图片的个性化尺寸
     let totalWidth: CGFloat
     
     var imageCount: Int { images.count }
+    
+    // 兼容性属性，返回第一张图片的尺寸（用于向后兼容）
+    var imageSize: CGSize {
+        return imageSizes.first ?? .zero
+    }
 }
 
 /// ListView 的状态管理对象
@@ -77,8 +82,14 @@ struct ListView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
     @StateObject private var viewState = ListViewState()
     
-    // 布局计算器
-    private let layoutCalculator = LayoutCalculator()
+    // 布局计算器 - 根据布局状态选择不同的计算器
+    private var layoutCalculator: LayoutCalculatorProtocol {
+        if viewModel.isSmartLayoutEnabled {
+            return LayoutCalculatorJus()
+        } else {
+            return LayoutCalculator()
+        }
+    }
     
     // 注：布局计算逻辑已移至 LayoutCalculator 类
     
@@ -162,6 +173,18 @@ struct ListView: View {
         .background(
             UnifiedKeyboardListener(viewModel: viewModel, mode: .list)
         )
+        .overlay(
+            // 布局切换按钮 - 放在左下角
+            VStack {
+                Spacer()
+                HStack {
+                    layoutToggleButton
+                        .padding(.leading, 20)
+                        .padding(.bottom, 20)
+                    Spacer()
+                }
+            }
+        )
         
     }
 
@@ -178,10 +201,10 @@ struct ListView: View {
                     let fixedGridRow = fixedGridRows[rowIndex]
                     
                     HStack(alignment: .top, spacing: 10) {
-                        ForEach(fixedGridRow.images, id: \ .id) { imageItem in
+                        ForEach(Array(fixedGridRow.images.enumerated()), id: \.element.id) { index, imageItem in
                             SmartImageThumbnailView(
                                 imageItem: imageItem,
-                                size: fixedGridRow.imageSize,
+                                size: fixedGridRow.imageSizes[index], // 使用每张图片对应的个性化尺寸
                                 isSelected: viewModel.selectedImages.contains(imageItem.id),
                                 onTap: {
                                     handleImageClick(imageItem)
@@ -252,6 +275,16 @@ struct ListView: View {
         }
         
         viewState.lastWindowSize = newSize
+    }
+    
+    // 布局切换按钮
+    private var layoutToggleButton: some View {
+        LayoutToggleButton(
+            isSmartLayout: viewModel.isSmartLayoutEnabled,
+            action: {
+                viewModel.toggleLayout()
+            }
+        )
     }
 }
 

@@ -31,8 +31,10 @@ let package = Package(
                 "UnifiedFocusManager.swift",
                 "UnifiedWindowManager.swift",
                 "ViewStyles.swift",
+                "LayoutCalculatorJus.swift",
+                "SmartImageThumbnailView.swift",
                 "LayoutCalculator.swift",
-                "SmartImageThumbnailView.swift"
+                "LayoutCalculatorProtocol.swift"
             ],
             resources: [
             ],

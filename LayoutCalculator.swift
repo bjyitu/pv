@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 布局计算器 - 封装所有与布局相关的计算逻辑
-class LayoutCalculator {
+class LayoutCalculator: LayoutCalculatorProtocol {
     // 布局缓存
     private var layoutCache: [String: [FixedGridRow]] = [:]
     
@@ -19,9 +19,11 @@ class LayoutCalculator {
             
             if currentRowImages.count == targetImagesPerRow {
                 let imageSize = calculateImageSize(for: currentRowImages.count, availableWidth: availableWidth, from: images)
+                // 为每张图片创建相同的尺寸数组
+                let imageSizes = Array(repeating: imageSize, count: currentRowImages.count)
                 rows.append(FixedGridRow(
                     images: currentRowImages,
-                    imageSize: imageSize,
+                    imageSizes: imageSizes,
                     totalWidth: effectiveWidth
                 ))
                 currentRowImages = []
@@ -31,9 +33,11 @@ class LayoutCalculator {
         // 添加最后一行（如果有剩余图片）
         if !currentRowImages.isEmpty {
             let imageSize = calculateImageSize(for: currentRowImages.count, availableWidth: availableWidth, from: images)
+            // 为每张图片创建相同的尺寸数组
+            let imageSizes = Array(repeating: imageSize, count: currentRowImages.count)
             rows.append(FixedGridRow(
                 images: currentRowImages,
-                imageSize: imageSize,
+                imageSizes: imageSizes,
                 totalWidth: effectiveWidth
             ))
         }
@@ -98,10 +102,12 @@ class LayoutCalculator {
             // 使用缓存的布局结构，只更新图片尺寸
             return cachedRows.map { cachedRow in
                 let newImageSize = calculateImageSize(for: cachedRow.images.count, availableWidth: availableWidth, from: group.images)
+                // 为每张图片创建相同的尺寸数组
+                let newImageSizes = Array(repeating: newImageSize, count: cachedRow.images.count)
                 
                 return FixedGridRow(
                     images: cachedRow.images,
-                    imageSize: newImageSize,
+                    imageSizes: newImageSizes,
                     totalWidth: calculateEffectiveWidth(availableWidth: availableWidth)
                 )
             }

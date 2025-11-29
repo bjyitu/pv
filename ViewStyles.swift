@@ -75,6 +75,24 @@ struct ViewStyles {
         
         /// 播放/暂停按钮图标大小
         static let playPauseIconSize: CGFloat = 24
+        
+        /// 布局切换按钮尺寸
+        static let layoutToggleButtonSize: CGFloat = 50
+        
+        /// 布局切换按钮内边距
+        static let layoutToggleButtonPadding: CGFloat = 8
+        
+        /// 布局切换按钮背景透明度
+        static let layoutToggleButtonBackgroundOpacity: Double = 0.3
+        
+        /// 布局切换按钮悬停时背景透明度
+        static let layoutToggleButtonHoverOpacity: Double = 0.8
+        
+        /// 布局切换按钮圆角半径
+        static let layoutToggleButtonCornerRadius: CGFloat = 25
+        
+        /// 布局切换按钮图标大小
+        static let layoutToggleIconSize: CGFloat = 24
     }
 }
 
@@ -318,5 +336,81 @@ struct UnifiedProgressBar: View {
             }
         }
         .frame(height: ProgressBarStyles.progressBarHeight)
+    }
+}
+
+// MARK: - 布局切换按钮组件
+struct LayoutToggleButton: View {
+    let isSmartLayout: Bool
+    let action: () -> Void
+    
+    @State private var isHovered = false
+    @State private var isPressed = false
+    @State private var isMouseOut = false
+    @State private var mouseOutTimer: Timer?
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(ViewStyles.Buttons.layoutToggleButtonBackgroundOpacity))
+                    .frame(width: ViewStyles.Buttons.layoutToggleButtonSize, 
+                           height: ViewStyles.Buttons.layoutToggleButtonSize)
+                
+                Image(systemName: isSmartLayout ? "square.grid.3x3" : "rectangle.grid.1x2")
+                    .font(.system(size: ViewStyles.Buttons.layoutToggleIconSize))
+                    .foregroundColor(.white)
+            }
+        }
+        .buttonStyle(LayoutToggleButtonStyle(isPressed: $isPressed))
+        .cornerRadius(ViewStyles.Buttons.layoutToggleButtonCornerRadius)
+        .help(isSmartLayout ? "切换到固定网格布局" : "切换到智能布局")
+        .scaleEffect(buttonScale)
+        .opacity(buttonOpacity)
+        .onHover { hovering in
+            isHovered = hovering
+            
+            // 鼠标移入时取消计时器并恢复不透明度
+            if hovering {
+                mouseOutTimer?.invalidate()
+                mouseOutTimer = nil
+                isMouseOut = false
+            } else {
+                // 鼠标移出时启动1秒后变透明的计时器
+                mouseOutTimer?.invalidate()
+                mouseOutTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                    isMouseOut = true
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: buttonScale)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .animation(.easeInOut(duration: 0.3), value: buttonOpacity)
+    }
+    
+    private var buttonScale: Double {
+        isPressed ? 1.0 : (isHovered ? 1.1 : 1.0)
+    }
+    
+    private var buttonOpacity: Double {
+        if isPressed {
+            return 0.8 // 按下时变暗
+        } else if isMouseOut {
+            return 0.2 // 鼠标移出后变透明
+        } else {
+            return 0.5 // 正常状态
+        }
+    }
+    
+    // 布局切换按钮样式（处理按下状态）
+    private struct LayoutToggleButtonStyle: ButtonStyle {
+        @Binding var isPressed: Bool
+        
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .onChange(of: configuration.isPressed) { pressed in
+                    isPressed = pressed
+                }
+        }
     }
 }

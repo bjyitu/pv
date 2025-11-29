@@ -73,6 +73,9 @@ class ImageBrowserViewModel: ObservableObject {
     @Published var isRandomOrderEnabled: Bool = false
     private var originalImageOrder: [ImageItem] = []
     
+    // 布局切换状态管理
+    @Published var isSmartLayoutEnabled: Bool = true // 默认使用智能布局
+    
     private var autoPlayTimer: Timer?
     
     private let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"]
@@ -674,6 +677,14 @@ class ImageBrowserViewModel: ObservableObject {
             break
         }
         
+    }
+    
+    // 布局切换方法
+    func toggleLayout() {
+        isSmartLayoutEnabled.toggle()
+        
+        // 通知布局已更改，触发界面更新
+        objectWillChange.send()
     }
 }
 
