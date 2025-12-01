@@ -34,10 +34,10 @@ extension NSImage {
 /// 单图视图常量定义
 struct SingleImageViewConstants {
     /// 图片初始缩放比例
-    static let initialScale: CGFloat = 1.1
+    static let initialScale: CGFloat = 1.06
     
     /// 图片动画结束时的缩放比例
-    static let targetScale: CGFloat = 1.15
+    static let targetScale: CGFloat = 1.08
     
     /// 进度条高度（像素）
     static let progressBarHeight: CGFloat = 2
@@ -46,16 +46,16 @@ struct SingleImageViewConstants {
     static let loadMoreThreshold: Int = 5
     
     /// 锐化滤镜强度 (0.0 - 2.0)
-    static let sharpenIntensity: Double = 0.8
+    static let sharpenIntensity: Double = 1.2
     
     /// 锐化滤镜半径 (像素)
-    static let sharpenRadius: Double = 1
+    static let sharpenRadius: Double = 0.5
     
     /// 图片对比度增强值
     static let contrastEnhancement: CGFloat = 1.1
     
     /// 图片亮度调整值
-    static let brightnessAdjustment: CGFloat = 0.03
+    static let brightnessAdjustment: CGFloat = 0.05
     
     /// 占位符图标的大小
     static let placeholderIconSize: CGFloat = 48
@@ -217,6 +217,7 @@ struct SingleImageView: View {
                 Image(nsImage: sharpenedImage)
                     .resizable()
                     .interpolation(.high) // 控制SwiftUI缩放时的插值质量
+                    .antialiased(true)     // 启用抗锯齿
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contrast(SingleImageViewConstants.contrastEnhancement)
@@ -224,8 +225,11 @@ struct SingleImageView: View {
                     .scaleEffect(scale) // SwiftUI的缩放效果
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         scale = SingleImageViewConstants.initialScale
-                        withAnimation(.linear(duration: 0.3)) {
-                            scale = SingleImageViewConstants.targetScale
+                        // 确保动画在自动播放时也能正确执行
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                scale = SingleImageViewConstants.targetScale
+                            }
                         }
                     }
                     
