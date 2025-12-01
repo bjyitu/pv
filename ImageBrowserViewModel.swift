@@ -18,7 +18,7 @@ struct ImageBrowserViewModelConstants {
     /// 分页配置常量
     struct Pagination {
         /// 默认初始加载图片数量
-        static let defaultInitialLoadCount: Int = 100
+        static let defaultInitialLoadCount: Int = 50
         
         /// 分页加载的每页图片数量
         static let pageSize: Int = 50

@@ -5,7 +5,7 @@ import CoreImage.CIFilterBuiltins
 /// NSImage扩展：添加锐化功能
 extension NSImage {
     /// 应用锐化滤镜
-    func sharpened(intensity: Double = 0.8, radius: Double = 2.0) -> NSImage? {
+    func sharpened(intensity: Double = 1, radius: Double = 1) -> NSImage? {
         guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
         }
@@ -46,13 +46,13 @@ struct SingleImageViewConstants {
     static let loadMoreThreshold: Int = 5
     
     /// 锐化滤镜强度 (0.0 - 2.0)
-    static let sharpenIntensity: Double = 0.6
+    static let sharpenIntensity: Double = 0.8
     
     /// 锐化滤镜半径 (像素)
-    static let sharpenRadius: Double = 0.7
+    static let sharpenRadius: Double = 1
     
     /// 图片对比度增强值
-    static let contrastEnhancement: CGFloat = 1.2
+    static let contrastEnhancement: CGFloat = 1.1
     
     /// 图片亮度调整值
     static let brightnessAdjustment: CGFloat = 0.03
@@ -210,26 +210,25 @@ struct SingleImageView: View {
     
     private func imageView(for imageItem: ImageItem) -> some View {
         GeometryReader { geometry in
-            if let nsImage = NSImage(contentsOf: imageItem.url),
-               let sharpenedImage = nsImage.sharpened(
-                   intensity: SingleImageViewConstants.sharpenIntensity,
-                   radius: SingleImageViewConstants.sharpenRadius
-               ) {
+            if let nsImage = NSImage(contentsOf: imageItem.url) {
+                // 只应用锐化，缩放交给SwiftUI的scaleEffect和interpolationQuality处理
+                let sharpenedImage = nsImage.sharpened(intensity: SingleImageViewConstants.sharpenIntensity, 
+                                                      radius: SingleImageViewConstants.sharpenRadius) ?? nsImage
                 Image(nsImage: sharpenedImage)
                     .resizable()
+                    .interpolation(.high) // 控制SwiftUI缩放时的插值质量
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contrast(SingleImageViewConstants.contrastEnhancement)
                     .brightness(SingleImageViewConstants.brightnessAdjustment)
-                    .scaleEffect(scale)
+                    .scaleEffect(scale) // SwiftUI的缩放效果
                     .onChange(of: viewModel.currentImageIndex) { _ in
-                        withAnimation(.linear(duration: 0)) {
-                            scale = SingleImageViewConstants.initialScale
-                        }
-                        withAnimation(.easeOut(duration: viewModel.autoPlayInterval-2)) {
+                        scale = SingleImageViewConstants.initialScale
+                        withAnimation(.linear(duration: 0.3)) {
                             scale = SingleImageViewConstants.targetScale
                         }
                     }
+                    
             } else {
                 Rectangle()
                     .fill(Color.gray)

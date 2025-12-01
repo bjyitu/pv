@@ -275,7 +275,7 @@ struct ProgressBarStyles {
     static let progressBarBackgroundOpacity: Double = 0.3
     
     /// 进度条前景透明度
-    static let progressBarForegroundOpacity: Double = 0.8
+    static let progressBarForegroundOpacity: Double = 0.9
     
     /// 进度条动画持续时间
     static let progressBarAnimationDuration: Double = 0.3
