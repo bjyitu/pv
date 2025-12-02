@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import AppKit
 
 /// NSImage扩展：添加锐化功能
 extension NSImage {
@@ -65,6 +66,7 @@ struct SingleImageView: View {
     @ObservedObject var viewModel: ImageBrowserViewModel
     @State private var scale: CGFloat = SingleImageViewConstants.initialScale
     @State private var animationProgress: CGFloat = 0.0
+    @State private var cachedImage: NSImage?
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
@@ -124,6 +126,9 @@ struct SingleImageView: View {
             if controlActiveState == .key {
                 NSApp.keyWindow?.isMovableByWindowBackground = true
             }
+            
+            // 初始化单图视图缓存
+            initializeSingleViewCache()
         }
         .onChange(of: viewModel.currentImageIndex) { _ in
             //修改窗口大小,如果是第一张
@@ -136,6 +141,9 @@ struct SingleImageView: View {
             
             // 重置动画进度
             resetAnimationProgress()
+            
+            // 更新缓存并预加载相邻图片
+            updateSingleViewCache()
         }
         .onChange(of: viewModel.isAutoPlaying) { isAutoPlaying in
             if isAutoPlaying {
@@ -147,6 +155,16 @@ struct SingleImageView: View {
         .onDisappear {
             // 离开时恢复
             NSApp.keyWindow?.isMovableByWindowBackground = false
+            
+            // 清理单图视图缓存
+            cleanupSingleViewCache()
+        }
+        .onChange(of: controlActiveState) { newState in
+            // 窗口激活状态变化时更新缓存窗口大小
+            if newState == .key, let window = NSApp.keyWindow {
+                let windowSize = window.frame.size
+                UnifiedCacheManager.shared.singleViewCacheManager.updateWindowSize(windowSize)
+            }
         }
         .overlay(
             // 播放/暂停按钮 - 放在左下角
@@ -202,38 +220,82 @@ struct SingleImageView: View {
         
         // 启动动画
         if viewModel.isAutoPlaying {
-            withAnimation(.linear(duration: viewModel.autoPlayInterval)) {
+            withAnimation(.easeOut(duration: viewModel.autoPlayInterval)) {
                 animationProgress = 1.0
             }
         }
     }
     
+    // MARK: - 单图视图缓存管理
+    
+    private func initializeSingleViewCache() {
+        guard let window = NSApp.keyWindow else { return }
+        let windowSize = window.frame.size
+        
+        // 初始化缓存窗口大小
+        UnifiedCacheManager.shared.singleViewCacheManager.updateWindowSize(windowSize)
+        
+        // 加载当前图片到缓存
+        updateSingleViewCache()
+    }
+    
+    private func updateSingleViewCache() {
+        guard let currentImage = currentImage else { return }
+        
+        // 使用单图视图缓存管理器加载图片
+        UnifiedCacheManager.shared.singleViewCacheManager.loadSingleViewImage(for: currentImage) { image in
+            DispatchQueue.main.async {
+                self.cachedImage = image
+            }
+        }
+        
+        // 预加载相邻图片
+        UnifiedCacheManager.shared.singleViewCacheManager.preloadImages(for: viewModel.images, around: viewModel.currentImageIndex)
+    }
+    
+    private func cleanupSingleViewCache() {
+        // 清理单图视图缓存
+        UnifiedCacheManager.shared.singleViewCacheManager.clearSingleViewCache()
+        cachedImage = nil
+    }
+    
     private func imageView(for imageItem: ImageItem) -> some View {
         GeometryReader { geometry in
-            if let nsImage = NSImage(contentsOf: imageItem.url) {
-                // 只应用锐化，缩放交给SwiftUI的scaleEffect和interpolationQuality处理
-                let sharpenedImage = nsImage.sharpened(intensity: SingleImageViewConstants.sharpenIntensity, 
-                                                      radius: SingleImageViewConstants.sharpenRadius) ?? nsImage
+            // 获取图片：优先使用缓存，其次从文件加载
+            let image: NSImage? = {
+                if let cachedImage = cachedImage {
+                    return cachedImage
+                } else if let nsImage = NSImage(contentsOf: imageItem.url) {
+                    return nsImage
+                }
+                return nil
+            }()
+            
+            if let image = image {
+                // 应用锐化处理
+                let sharpenedImage = image.sharpened(intensity: SingleImageViewConstants.sharpenIntensity, 
+                                                    radius: SingleImageViewConstants.sharpenRadius) ?? image
+                
+                // 统一的图片显示视图
                 Image(nsImage: sharpenedImage)
                     .resizable()
-                    .interpolation(.high) // 控制SwiftUI缩放时的插值质量
-                    .antialiased(true)     // 启用抗锯齿
+                    .interpolation(.high)
+                    .antialiased(true)
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contrast(SingleImageViewConstants.contrastEnhancement)
                     .brightness(SingleImageViewConstants.brightnessAdjustment)
-                    .scaleEffect(scale) // SwiftUI的缩放效果
+                    .scaleEffect(scale)
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         scale = SingleImageViewConstants.initialScale
-                        // 确保动画在自动播放时也能正确执行
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) {
                             withAnimation(.easeOut(duration: 0.3)) {
                                 scale = SingleImageViewConstants.targetScale
                             }
                         }
                     }
-                    
             } else {
+                // 占位符视图
                 Rectangle()
                     .fill(Color.gray)
                     .overlay(

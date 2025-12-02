@@ -10,12 +10,18 @@ struct UnifiedCacheManagerConstants {
         static let maxCacheSize: Int = 2000
         /// 最大内存使用量（字节）- 8000MB
         static let maxMemoryUsage: Int = 8000 * 1024 * 1024
+        /// 单图视图缓存最大数量
+        static let singleViewMaxCacheSize: Int = 50
+        /// 单图视图缓存最大内存使用量（字节）- 1000MB
+        static let singleViewMaxMemoryUsage: Int = 1000 * 1024 * 1024
     }
     
     /// 队列相关常量
     struct Queues {
         /// 缓存队列标识符
         static let cacheQueueIdentifier = "com.pv.cache"
+        /// 单图视图缓存队列标识符
+        static let singleViewCacheQueueIdentifier = "com.pv.singleview.cache"
     }
     
     /// 图像处理相关常量
@@ -36,6 +42,159 @@ struct UnifiedCacheManagerConstants {
             static let thumbnailMaxPixelSize = kCGImageSourceThumbnailMaxPixelSize as String
         }
     }
+    
+    /// 单图视图缓存相关常量
+    struct SingleViewCache {
+        /// 窗口大小缓存策略
+        static let windowSizeBasedCache = true
+        /// 缓存质量设置
+        static let cacheQuality: CGFloat = 0.9
+        /// 预加载图片数量
+        static let preloadCount: Int = 3
+    }
+}
+
+/// 单图视图专用缓存管理器
+class SingleViewCacheManager {
+    static let shared = SingleViewCacheManager()
+    
+    private let singleViewImageCache = NSCache<NSString, NSImage>()
+    private let cacheQueue = DispatchQueue(label: UnifiedCacheManagerConstants.Queues.singleViewCacheQueueIdentifier, attributes: .concurrent)
+    private var currentWindowSize: CGSize = .zero
+    private var cachedWindowSize: CGSize = .zero
+    
+    private init() {
+        singleViewImageCache.countLimit = UnifiedCacheManagerConstants.CacheConfig.singleViewMaxCacheSize
+        singleViewImageCache.totalCostLimit = UnifiedCacheManagerConstants.CacheConfig.singleViewMaxMemoryUsage
+    }
+    
+    // MARK: - 窗口大小管理
+    
+    func updateWindowSize(_ size: CGSize) {
+        cacheQueue.async(flags: .barrier) { [weak self] in
+            self?.currentWindowSize = size
+            
+            // 如果窗口大小变化超过阈值，清理缓存
+            if let cachedSize = self?.cachedWindowSize {
+                let widthDiff = abs(size.width - cachedSize.width)
+                let heightDiff = abs(size.height - cachedSize.height)
+                
+                // 如果窗口大小变化超过10%，清理缓存避免缓存污染
+                if widthDiff > cachedSize.width * 0.1 || heightDiff > cachedSize.height * 0.1 {
+                    self?.clearSingleViewCache()
+                    self?.cachedWindowSize = size
+                }
+            } else {
+                self?.cachedWindowSize = size
+            }
+        }
+    }
+    
+    // MARK: - 缓存键生成
+    
+    func generateSingleViewCacheKey(for imageItem: ImageItem, windowSize: CGSize) -> String {
+        let sizeKey = "\(Int(windowSize.width))x\(Int(windowSize.height))"
+        return "singleview_\(imageItem.url.absoluteString)_\(sizeKey)"
+    }
+    
+    // MARK: - 缓存操作
+    
+    func getCachedSingleViewImage(for imageItem: ImageItem) -> NSImage? {
+        let key = generateSingleViewCacheKey(for: imageItem, windowSize: currentWindowSize) as NSString
+        return singleViewImageCache.object(forKey: key)
+    }
+    
+    func setCachedSingleViewImage(_ image: NSImage, for imageItem: ImageItem) {
+        let key = generateSingleViewCacheKey(for: imageItem, windowSize: currentWindowSize) as NSString
+        singleViewImageCache.setObject(image, forKey: key)
+    }
+    
+    // MARK: - 图片加载
+    
+    func loadSingleViewImage(for imageItem: ImageItem, completion: @escaping (NSImage?) -> Void) {
+        // 首先检查缓存
+        if let cached = getCachedSingleViewImage(for: imageItem) {
+            DispatchQueue.main.async {
+                completion(cached)
+            }
+            return
+        }
+        
+        cacheQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            let imageSource = CGImageSourceCreateWithURL(imageItem.url as CFURL, nil)
+            guard let imageSource = imageSource else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+            
+            // 使用窗口大小作为目标尺寸
+            let targetSize = self.currentWindowSize
+            
+            // 计算适合窗口的图片尺寸，保持宽高比
+            let aspectRatio = imageItem.size.width / imageItem.size.height
+            let windowAspectRatio = targetSize.width / targetSize.height
+            
+            let finalSize: CGSize
+            if aspectRatio > windowAspectRatio {
+                // 图片更宽，以宽度为基准
+                finalSize = CGSize(width: targetSize.width, height: targetSize.width / aspectRatio)
+            } else {
+                // 图片更高，以高度为基准
+                finalSize = CGSize(width: targetSize.height * aspectRatio, height: targetSize.height)
+            }
+            
+            // 创建高质量缩略图选项
+            var options = UnifiedCacheManagerConstants.ImageProcessing.thumbnailOptions
+            options[UnifiedCacheManagerConstants.ImageProcessing.PropertyKeys.thumbnailMaxPixelSize] = max(finalSize.width, finalSize.height)
+            
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary) else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
+            
+            let nsImage = NSImage(cgImage: cgImage, size: finalSize)
+            
+            DispatchQueue.main.async { [weak self] in
+                self?.setCachedSingleViewImage(nsImage, for: imageItem)
+                completion(nsImage)
+            }
+        }
+    }
+    
+    // MARK: - 预加载管理
+    
+    func preloadImages(for imageItems: [ImageItem], around index: Int) {
+        let preloadCount = UnifiedCacheManagerConstants.SingleViewCache.preloadCount
+        let startIndex = max(0, index - preloadCount)
+        let endIndex = min(imageItems.count - 1, index + preloadCount)
+        
+        for i in startIndex...endIndex where i != index {
+            let imageItem = imageItems[i]
+            
+            // 异步预加载
+            cacheQueue.async { [weak self] in
+                self?.loadSingleViewImage(for: imageItem) { _ in
+                    // 预加载完成，不需要处理结果
+                }
+            }
+        }
+    }
+    
+    // MARK: - 缓存清理
+    
+    func clearSingleViewCache() {
+        singleViewImageCache.removeAllObjects()
+    }
+    
+    func clearAllCaches() {
+        clearSingleViewCache()
+    }
 }
 
 class UnifiedCacheManager: ObservableObject {
@@ -47,6 +206,9 @@ class UnifiedCacheManager: ObservableObject {
     private let thumbnailCache = NSCache<NSString, NSImage>()
     
     private let cacheQueue = DispatchQueue(label: UnifiedCacheManagerConstants.Queues.cacheQueueIdentifier, attributes: .concurrent)
+    
+    // 单图视图缓存管理器
+    let singleViewCacheManager = SingleViewCacheManager.shared
     
     private init() {
         thumbnailCache.countLimit = UnifiedCacheManager.maxCacheSize
