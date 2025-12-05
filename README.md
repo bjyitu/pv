@@ -2,6 +2,11 @@
 
 一个简洁的macOS图片浏览器，支持网格浏览和单图查看。
 
+<img width="780" height="1095" alt="readme1" src="https://github.com/user-attachments/assets/00d55fc4-903f-4baf-9081-6e7f3e17c1cc" />
+
+<img width="1137" height="780" alt="readme2" src="https://github.com/user-attachments/assets/606eb57f-3d0d-4e93-b832-833977f70246" />
+
+
 ## 功能
 
 - � 网格浏览图片缩略图
