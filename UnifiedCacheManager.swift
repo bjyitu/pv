@@ -11,9 +11,14 @@ struct UnifiedCacheManagerConstants {
         /// 最大内存使用量（字节）- 8000MB
         static let maxMemoryUsage: Int = 8000 * 1024 * 1024
         /// 单图视图缓存最大数量
-        static let singleViewMaxCacheSize: Int = 50
+        static let singleViewMaxCacheSize: Int = 20
         /// 单图视图缓存最大内存使用量（字节）- 1000MB
         static let singleViewMaxMemoryUsage: Int = 1000 * 1024 * 1024
+        
+        /// 自动清理阈值 - 当缓存项超过此数量时触发清理
+        static let autoCleanupThreshold: Int = 200
+        /// 每次清理的缓存项数量
+        static let cleanupBatchSize: Int = 100
     }
     
     /// 队列相关常量
@@ -210,6 +215,11 @@ class UnifiedCacheManager: ObservableObject {
     // 单图视图缓存管理器
     let singleViewCacheManager = SingleViewCacheManager.shared
     
+    // 缓存访问追踪 - 用于LRU清理
+    private var cacheAccessOrder: [String] = []
+    private let accessOrderQueue = DispatchQueue(label: "com.pv.cache.access", attributes: .concurrent)
+    private var currentCacheCount: Int = 0
+    
     private init() {
         thumbnailCache.countLimit = UnifiedCacheManager.maxCacheSize
         thumbnailCache.totalCostLimit = UnifiedCacheManager.maxMemoryUsage
@@ -232,12 +242,23 @@ class UnifiedCacheManager: ObservableObject {
     
     func getCachedThumbnail(for imageItem: ImageItem, size: CGSize) -> NSImage? {
         let key = generateCacheKey(for: imageItem, size: size) as NSString
-        return thumbnailCache.object(forKey: key)
+        let result = thumbnailCache.object(forKey: key)
+        
+        // 如果缓存命中，更新访问顺序
+        if result != nil {
+            updateCacheAccessOrder(key: key as String)
+        }
+        
+        return result
     }
     
     func setCachedThumbnail(_ image: NSImage, for imageItem: ImageItem, size: CGSize) {
         let key = generateCacheKey(for: imageItem, size: size) as NSString
         thumbnailCache.setObject(image, forKey: key)
+        
+        // 更新访问顺序并检查是否需要清理
+        updateCacheAccessOrder(key: key as String)
+        checkAndPerformAutoCleanup()
     }
     
     func loadThumbnail(for imageItem: ImageItem, size: CGSize, completion: @escaping (NSImage?) -> Void) {
@@ -294,13 +315,71 @@ class UnifiedCacheManager: ObservableObject {
         }
     }
     
+    // MARK: - 缓存访问追踪和自动清理
+    
+    /// 更新缓存访问顺序（LRU算法）
+    private func updateCacheAccessOrder(key: String) {
+        accessOrderQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            // 如果key已存在，先移除旧的
+            if let existingIndex = self.cacheAccessOrder.firstIndex(of: key) {
+                self.cacheAccessOrder.remove(at: existingIndex)
+            }
+            
+            // 添加到队列末尾（最新访问）
+            self.cacheAccessOrder.append(key)
+            
+            // 更新当前缓存数量
+            self.currentCacheCount = self.thumbnailCache.totalCostLimit > 0 ? self.cacheAccessOrder.count : 0
+        }
+    }
+    
+    /// 检查并执行自动清理
+    private func checkAndPerformAutoCleanup() {
+        accessOrderQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            // 检查是否需要清理
+            if self.cacheAccessOrder.count > UnifiedCacheManagerConstants.CacheConfig.autoCleanupThreshold {
+                self.performAutoCleanup()
+            }
+        }
+    }
+    
+    /// 执行自动清理 - 清理最早的缓存项
+    private func performAutoCleanup() {
+        let cleanupCount = min(UnifiedCacheManagerConstants.CacheConfig.cleanupBatchSize, 
+                              self.cacheAccessOrder.count / 2)
+        
+        guard cleanupCount > 0 else { return }
+        
+        // 获取要清理的key（最早的访问项）
+        let keysToRemove = Array(self.cacheAccessOrder.prefix(cleanupCount))
+        
+        // 从缓存中移除
+        for key in keysToRemove {
+            self.thumbnailCache.removeObject(forKey: key as NSString)
+        }
+        
+        // 从访问顺序中移除
+        self.cacheAccessOrder.removeFirst(cleanupCount)
+        
+        print("缓存自动清理完成：移除了 \(keysToRemove.count) 个最早缓存项，剩余 \(self.cacheAccessOrder.count) 个")
+    }
+    
     // MARK: - 缓存清理
     
     func clearThumbnailCache() {
+        accessOrderQueue.async(flags: .barrier) { [weak self] in
+            self?.cacheAccessOrder.removeAll()
+            self?.currentCacheCount = 0
+        }
         thumbnailCache.removeAllObjects()
     }
     
     func clearAllCaches() {
         clearThumbnailCache()
+        singleViewCacheManager.clearAllCaches()
     }
 }

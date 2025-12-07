@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct LayoutThumbView: View {
+struct LayoutThumbView: View, Equatable {
     let imageItem: ImageItem
     let size: CGSize
     let isSelected: Bool
@@ -17,6 +17,13 @@ struct LayoutThumbView: View {
             .onAppear {
                 loadThumbnail()
             }
+    }
+    
+    // Equatable协议实现 - 只比较影响显示的关键属性
+    static func == (lhs: LayoutThumbView, rhs: LayoutThumbView) -> Bool {
+        lhs.imageItem.id == rhs.imageItem.id &&
+        lhs.size == rhs.size &&
+        lhs.isSelected == rhs.isSelected
     }
     
     @ViewBuilder

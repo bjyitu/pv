@@ -36,10 +36,10 @@ class ListViewState: ObservableObject {
 }
 
 struct ListView: View {
-    @ObservedObject var viewModel: ImageBrowserViewModel
+    @StateObject var viewModel: ImageBrowserViewModel
     
     // 修改：使用ViewModel统一管理的状态，避免视图重建时状态丢失
-    @ObservedObject var viewState: ListViewState
+    @StateObject var viewState: ListViewState
     
     // 布局计算器 - 根据布局状态选择不同的计算器
     private var layoutCalculator: LayoutCalculatorProtocol {
@@ -119,8 +119,6 @@ struct ListView: View {
                 }
             }
             
-            // 滚动位置恢复逻辑已移至performPhasedScroll方法中处理
-            // 避免与UnifiedWindowManager的滚动请求时序冲突
             .onChange(of: geometry.size) { newSize in
                 guard !viewModel.isSingleViewMode else { return }
                 
@@ -177,7 +175,7 @@ struct ListView: View {
                     
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(Array(fixedGridRow.images.enumerated()), id: \.element.id) { index, imageItem in
-                            LayoutThumbView(
+                            EquatableView(content: LayoutThumbView(
                                 imageItem: imageItem,
                                 size: fixedGridRow.imageSizes[index], // 使用每张图片对应的个性化尺寸
                                 isSelected: viewModel.selectedImages.contains(imageItem.id),
@@ -193,7 +191,7 @@ struct ListView: View {
                                     }
                                 },
                                 viewModel: viewModel
-                            )
+                            ))
                             .id(imageItem.id)
                         }
                         
@@ -240,14 +238,19 @@ struct ListView: View {
         }
         
         // 计算滚动偏移量
-        let finalScrollOffset = max(0, -minY)
         
-        // 更新滚动位置
-        viewState.currentScrollOffset = finalScrollOffset
-        UnifiedWindowManager.shared.updateListScrollOffset(finalScrollOffset)
+        if abs(minY) < 100 {
+            print("handleScrollPositionChange: abs.miny < 100: \(minY)")
+            return
+        }else{
+            let finalScrollOffset = max(0, -minY)
+            // 更新滚动位置
+            viewState.currentScrollOffset = finalScrollOffset
+            UnifiedWindowManager.shared.updateListScrollOffset(finalScrollOffset)
+        } 
         
         // 检测当前视口区域
-        let visibleRegionStart = finalScrollOffset
+        let visibleRegionStart = viewState.currentScrollOffset
         let visibleRegionEnd = visibleRegionStart + viewportHeight
         
         // 预加载当前视口附近的区域
