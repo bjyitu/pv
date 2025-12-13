@@ -2,8 +2,6 @@ import SwiftUI
 
 /// 布局计算器 - 封装所有与布局相关的计算逻辑
 class LayoutCalculator: LayoutCalculatorProtocol {
-    // 布局缓存
-    private var layoutCache: [String: [FixedGridRow]] = [:]
     
     /// 创建固定网格行
     func createFixedGridRows(from images: [ImageItem], availableWidth: CGFloat) -> [FixedGridRow] {
@@ -60,7 +58,7 @@ class LayoutCalculator: LayoutCalculatorProtocol {
         let availableImageWidth = (effectiveWidth - totalSpacing) / CGFloat(standardImagesPerRow)
         
         // 采样前六张图片计算平均宽高比
-        let sampleSize = min(images.count, 6) // 最多采样前六张
+        let sampleSize = min(images.count, standardImagesPerRow) // 最多采样前七张
         var totalAspectRatio: CGFloat = 0.0
         
         for i in 0..<sampleSize {
@@ -74,48 +72,13 @@ class LayoutCalculator: LayoutCalculatorProtocol {
         return CGSize(width: availableImageWidth, height: availableImageWidth / averageAspectRatio)
     }
     
-    /// 获取固定网格行（带缓存）
+    /// 获取固定网格行
     func getFixedGridRows(for group: DirectoryGroup, availableWidth: CGFloat, hasReceivedGeometry: Bool) -> [FixedGridRow] {
         guard hasReceivedGeometry else { return [] }
         
-        // 使用固定缓存键：布局结构固定，只缩放图片尺寸
-        let cacheKey = "fixed_grid_layout"
-        
-        // 检查缓存是否存在
-        if let cachedRows = layoutCache[cacheKey] {
-            // 使用缓存的布局结构，只更新图片尺寸
-            return cachedRows.map { cachedRow in
-                let newImageSize = calculateImageSize(for: cachedRow.images.count, availableWidth: availableWidth, from: group.images)
-                // 为每张图片创建相同的尺寸数组
-                let newImageSizes = Array(repeating: newImageSize, count: cachedRow.images.count)
-                
-                return FixedGridRow(
-                    images: cachedRow.images,
-                    imageSizes: newImageSizes,
-                    totalWidth: calculateEffectiveWidth(availableWidth: availableWidth)
-                )
-            }
-        }
-        
-        // 第一次调用：创建固定布局结构
-        let rows = createFixedGridRows(from: group.images, availableWidth: availableWidth)
-        
-        // 更新缓存
-        layoutCache[cacheKey] = rows
-        
-        // 清理过期的缓存（只保留最近几个）
-        if layoutCache.count > 100 {
-            let keysToRemove = Array(layoutCache.keys).prefix(layoutCache.count - 100)
-            for key in keysToRemove {
-                layoutCache.removeValue(forKey: key)
-            }
-        }
-        
-        return rows
+        // 直接创建固定布局结构
+        return createFixedGridRows(from: group.images, availableWidth: availableWidth)
     }
     
-    /// 清除布局缓存
-    func clearCache() {
-        layoutCache.removeAll()
-    }
+
 }

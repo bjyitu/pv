@@ -5,10 +5,10 @@ struct StartView: View {
     @State private var isTapped = false
     
     var body: some View {
-        ZStack {
+        Group {
             // 显示内容视图或空状态视图
             if viewModel.hasContent {
-                ListView(viewModel: viewModel, viewState: viewModel.listViewState)
+                ListView(viewModel: viewModel)
                     .frame(minWidth: 400, minHeight: 400)
             } else {
                 emptyStateView
@@ -27,7 +27,8 @@ struct StartView: View {
                         }
                     }
             }
-            
+        }
+        .overlay {
             if viewModel.isSingleViewMode {
                 SingleImageView(viewModel: viewModel)
             }

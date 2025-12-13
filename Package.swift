@@ -31,7 +31,7 @@ let package = Package(
                 "UnifiedFocusManager.swift",
                 "UnifiedWindowManager.swift",
                 "ImageBrowserViewStyles.swift",
-                "LayoutCalculatorJus.swift",
+                "LayoutCalculatorOpt.swift",
                 "LayoutThumbView.swift",
                 "LayoutCalculator.swift",
                 "LayoutCalculatorProtocol.swift"

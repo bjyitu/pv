@@ -7,13 +7,13 @@ struct UnifiedCacheManagerConstants {
     /// 缓存配置相关常量
     struct CacheConfig {
         /// 最大缓存项目数量
-        static let maxCacheSize: Int = 2000
-        /// 最大内存使用量（字节）- 8000MB
-        static let maxMemoryUsage: Int = 8000 * 1024 * 1024
+        static let maxCacheSize: Int = 200
+        /// 最大内存使用量（字节）- 2000MB
+        static let maxMemoryUsage: Int = 2000 * 1024 * 1024
         /// 单图视图缓存最大数量
         static let singleViewMaxCacheSize: Int = 20
-        /// 单图视图缓存最大内存使用量（字节）- 1000MB
-        static let singleViewMaxMemoryUsage: Int = 1000 * 1024 * 1024
+        /// 单图视图缓存最大内存使用量（字节）- 200MB
+        static let singleViewMaxMemoryUsage: Int = 200 * 1024 * 1024
         
         /// 自动清理阈值 - 当缓存项超过此数量时触发清理
         static let autoCleanupThreshold: Int = 200
@@ -205,9 +205,6 @@ class SingleViewCacheManager {
 class UnifiedCacheManager: ObservableObject {
     static let shared = UnifiedCacheManager()
     
-    static let maxCacheSize = UnifiedCacheManagerConstants.CacheConfig.maxCacheSize
-    static let maxMemoryUsage = UnifiedCacheManagerConstants.CacheConfig.maxMemoryUsage // 8000MB
-    
     private let thumbnailCache = NSCache<NSString, NSImage>()
     
     private let cacheQueue = DispatchQueue(label: UnifiedCacheManagerConstants.Queues.cacheQueueIdentifier, attributes: .concurrent)
@@ -221,8 +218,8 @@ class UnifiedCacheManager: ObservableObject {
     private var currentCacheCount: Int = 0
     
     private init() {
-        thumbnailCache.countLimit = UnifiedCacheManager.maxCacheSize
-        thumbnailCache.totalCostLimit = UnifiedCacheManager.maxMemoryUsage
+        thumbnailCache.countLimit = UnifiedCacheManagerConstants.CacheConfig.maxCacheSize
+        thumbnailCache.totalCostLimit = UnifiedCacheManagerConstants.CacheConfig.maxMemoryUsage
     }
     
     // MARK: - 缓存键生成
@@ -231,12 +228,6 @@ class UnifiedCacheManager: ObservableObject {
         return "\(imageItem.url.absoluteString)_\(size.width)x\(size.height)"
     }
     
-    // MARK: - 缓存管理
-    
-    func shouldCleanupCache(currentCount: Int, currentMemoryUsage: Int) -> Bool {
-
-        return currentCount > UnifiedCacheManager.maxCacheSize || currentMemoryUsage > UnifiedCacheManager.maxMemoryUsage
-    }
     
     // MARK: - 缩略图缓存操作
     
@@ -331,7 +322,7 @@ class UnifiedCacheManager: ObservableObject {
             self.cacheAccessOrder.append(key)
             
             // 更新当前缓存数量
-            self.currentCacheCount = self.thumbnailCache.totalCostLimit > 0 ? self.cacheAccessOrder.count : 0
+            self.currentCacheCount = self.cacheAccessOrder.count
         }
     }
     
@@ -364,6 +355,9 @@ class UnifiedCacheManager: ObservableObject {
         
         // 从访问顺序中移除
         self.cacheAccessOrder.removeFirst(cleanupCount)
+        
+        // 更新当前缓存计数
+        self.currentCacheCount = self.cacheAccessOrder.count
         
         print("缓存自动清理完成：移除了 \(keysToRemove.count) 个最早缓存项，剩余 \(self.cacheAccessOrder.count) 个")
     }

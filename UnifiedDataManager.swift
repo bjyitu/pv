@@ -50,7 +50,7 @@ class UnifiedDataManager: ObservableObject {
         
         // 与CacheManager协调，确保不超过缓存限制
         static var effectiveInitialLoadCount: Int {
-            return min(initialLoadCount, UnifiedCacheManager.maxCacheSize / 2)
+            return min(initialLoadCount, UnifiedCacheManagerConstants.CacheConfig.maxCacheSize / 2)
         }
     }
     
@@ -137,13 +137,13 @@ class UnifiedDataManager: ObservableObject {
             self.isLoading = false
             
             if self.images.isEmpty {
-                self.errorMessage = ImageBrowserViewModelConstants.ErrorMessages.emptyDirectory
+                self.errorMessage = AppConstants.ErrorMessages.emptyDirectory
             }
             
         } catch {
             DispatchQueue.main.async {
                 self.isLoading = false
-                self.errorMessage = String(format: ImageBrowserViewModelConstants.ErrorMessages.directoryLoadFailed, error.localizedDescription)
+                self.errorMessage = String(format: AppConstants.ErrorMessages.directoryLoadFailed, error.localizedDescription)
             }
         }
     }

@@ -215,10 +215,10 @@ class UnifiedFocusView: NSView {
             break
         case UnifiedFocusManagerConstants.KeyEvents.downArrow.character:  // 下箭头 - 在Finder中显示
             handleRevealInFinderKeyEvent(event: event, viewModel: viewModel)
-        case UnifiedFocusManagerConstants.KeyEvents.leftArrow.character:  // 左箭头
-            viewModel.navigateSelection(direction: .left)  // 左箭头向左选择
-        case UnifiedFocusManagerConstants.KeyEvents.rightArrow.character:  // 右箭头
-            viewModel.navigateSelection(direction: .right)  // 右箭头向右选择
+        case UnifiedFocusManagerConstants.KeyEvents.leftArrow.character:  // 左箭头 - 下一张图片
+            viewModel.navigateSelection(direction: .left)  // 左箭头：索引增加（下一张）
+        case UnifiedFocusManagerConstants.KeyEvents.rightArrow.character:  // 右箭头 - 上一张图片
+            viewModel.navigateSelection(direction: .right)  // 右箭头：索引减少（上一张）
         case UnifiedFocusManagerConstants.KeyEvents.minus.character:  // 减号键 - 缩小缩略图
             viewModel.handleKeyPress(UnifiedFocusManagerConstants.KeyEvents.minus.character)
         case UnifiedFocusManagerConstants.KeyEvents.equals.character:  // 等号键 - 放大缩略图

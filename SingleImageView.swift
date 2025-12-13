@@ -107,9 +107,7 @@ struct SingleImageView: View {
                         if viewModel.isSingleViewMode {
                             // 从单图切换到列表视图
                             viewModel.toggleViewMode()
-                            
                             // 确保焦点正确设置到列表视图,model里有延迟设定0.3秒
-                            NotificationCenter.default.post(name: AppConstants.Notifications.setFocusToListView, object: nil)
                         } else {
                             // 从列表切换到单图视图
                             viewModel.toggleViewMode()
@@ -126,6 +124,13 @@ struct SingleImageView: View {
             
             // 初始化单图视图缓存
             initializeSingleViewCache()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("UpdateSingleViewCache"))) { _ in
+            // 更新缓存并预加载相邻图片
+            updateSingleViewCache()
+            
+            // 通知列表视图更新预加载区域
+            notifyListViewToPreloadCurrentRegion()
         }
         .onChange(of: viewModel.currentImageIndex) { _ in
             //修改窗口大小,如果是第一张

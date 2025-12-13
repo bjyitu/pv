@@ -59,6 +59,9 @@ struct AppConstants {
     struct ListView {
         /// 每行显示的图片数量，影响网格布局的列数
         static let imagesPerRow = 6
+
+        /// Opt布局每行最大图片数量
+        static let imagesPerRowMax: Int = 10
         
         /// 图片之间的间距（水平和垂直方向相同）
         static let spacing: CGFloat = 10
@@ -136,6 +139,18 @@ struct AppConstants {
         
         /// 空状态视图的默认图标
         static let emptyStateIcon = "photo.on.rectangle"
+    }
+    
+    // MARK: - 错误消息常量
+    struct ErrorMessages {
+        /// 目录为空时的错误消息
+        static let emptyDirectory = "该目录中没有找到支持的图片文件"
+        
+        /// 加载目录失败时的错误消息模板
+        static let directoryLoadFailed = "无法加载目录: %@"
+        
+        /// 删除图片失败时的错误消息模板
+        static let imageDeleteFailed = "删除图片失败: %@"
     }
     
     // MARK: - 通知名称统一管理

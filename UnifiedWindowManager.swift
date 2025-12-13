@@ -348,7 +348,6 @@ class UnifiedWindowManager: ObservableObject {
     // 新增：更新列表滚动位置
     func updateListScrollOffset(_ offset: CGFloat) {
         currentListScrollOffset = offset
-        print("UnifiedWindowManager: 更新滚动位置: \(offset)")
     }
     
     

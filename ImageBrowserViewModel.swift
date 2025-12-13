@@ -13,17 +13,7 @@ struct ImageBrowserViewModelConstants {
     /// 视图切换延迟时间（秒），用于确保焦点正确设置
     static let viewSwitchDelay: TimeInterval = 0.2
     
-    /// 错误消息常量
-    struct ErrorMessages {
-        /// 目录为空时的错误消息
-        static let emptyDirectory = "该目录中没有找到支持的图片文件"
-        
-        /// 加载目录失败时的错误消息模板
-        static let directoryLoadFailed = "无法加载目录: %@"
-        
-        /// 删除图片失败时的错误消息模板
-        static let imageDeleteFailed = "删除图片失败: %@"
-    }
+
     
     /// 日志消息常量
     struct LogMessages {
@@ -40,6 +30,9 @@ class ImageBrowserViewModel: ObservableObject {
     // MARK: - 数据管理器
     let dataManager = UnifiedDataManager.shared
     private var cancellables = Set<AnyCancellable>()
+    
+    // MARK: - 列表视图状态管理
+    @Published var listViewState = ListViewState()
     
     // MARK: - 发布属性（视图状态管理）
     
@@ -60,12 +53,9 @@ class ImageBrowserViewModel: ObservableObject {
     private var originalImageOrder: [ImageItem] = []
     
     // 布局切换状态管理
-    @Published var isSmartLayoutEnabled: Bool = true // 默认使用智能布局
+    @Published var isSmartLayoutEnabled: Bool = false // 默认使用网格
     
     @Published var isFirstTimeInSingleView = true
-    
-    // 新增：统一管理列表视图状态，避免视图重建时状态丢失
-    @Published var listViewState = ListViewState()
     
     private var autoPlayTimer: Timer?
     
@@ -140,8 +130,6 @@ class ImageBrowserViewModel: ObservableObject {
         isSingleViewMode.toggle()
         if isSingleViewMode {
             UnifiedWindowManager.shared.recordListWindowSize(groupId: currentDirectory?.path)
-            isFirstTimeInSingleView = true
-            isReturningFromSingleView = false  // 进入单页时清除返回标记
         } else {
             // 设置从单页返回状态标记
             isReturningFromSingleView = true
@@ -149,20 +137,15 @@ class ImageBrowserViewModel: ObservableObject {
             UnifiedWindowManager.shared.restoreListWindowSize(groupId: currentDirectory?.path)
             updateSelectionFromSingleView()
             UnifiedWindowManager.shared.updateTitle()
-            isFirstTimeInSingleView = false
             
             // 从单页返回时恢复之前保存的滚动位置
             let savedOffset = UnifiedWindowManager.shared.currentListScrollOffset
             listViewState.currentScrollOffset = savedOffset
             print("ViewModel: 从单页返回，恢复滚动位置: \(savedOffset)")
-            
+            //viewSwitchDelay0.2秒后, 通知列表视图设置焦点,isReturningFromSingleView 设成false
             DispatchQueue.main.asyncAfter(deadline: .now() + ImageBrowserViewModelConstants.viewSwitchDelay) {
                 NotificationCenter.default.post(name: AppConstants.Notifications.setFocusToListView, object: nil)
-                // 延迟清除返回标记，确保在滚动完成期间不会误触发加载
-                // 使用与滚动清理相同的延迟时间，确保滚动操作完成后再清除标记
-                DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.ListView.scrollCleanup) {
-                    self.isReturningFromSingleView = false
-                }
+                self.isReturningFromSingleView = false
             }
         }
         
@@ -205,7 +188,6 @@ class ImageBrowserViewModel: ObservableObject {
         }
         currentImageIndex = index
         isSingleViewMode = true
-        isReturningFromSingleView = false  // 进入单页时清除返回标记
         
         UnifiedWindowManager.shared.recordListWindowSize(groupId: currentDirectory?.path)
         
@@ -309,10 +291,10 @@ class ImageBrowserViewModel: ObservableObject {
         var newIndex = currentIndex
         
         switch direction {
-        case .right:  // 向右：增加索引
-            newIndex = min(images.count - 1, currentIndex + 1)
-        case .left:   // 向左：减少索引
+        case .right:  // 右箭头
             newIndex = max(0, currentIndex - 1)
+        case .left:   // 左箭头
+            newIndex = min(images.count - 1, currentIndex + 1)
         case .up, .down:
             // 垂直导航暂不实现
             return
@@ -352,33 +334,49 @@ class ImageBrowserViewModel: ObservableObject {
             // 修复选择逻辑：删除后正确更新选择状态
             selectedImages.remove(image.id)
             
-            // 如果删除的是当前选中的图片，需要重新设置选择
-            if lastSelectedIndex == index {
-                // 如果还有剩余图片，选择删除位置附近的图片
-                if !images.isEmpty {
-                    let newIndex = min(index, images.count - 1)
-                    if newIndex >= 0 {
-                        selectedImages.insert(images[newIndex].id)
-                        lastSelectedIndex = newIndex
+            // 清除被删除图片的单图视图缓存
+             UnifiedCacheManager.shared.singleViewCacheManager.clearSingleViewCache()
+             
+             // 如果删除的是当前选中的图片，需要重新设置选择
+             if lastSelectedIndex == index {
+                 // 如果还有剩余图片，选择删除位置附近的图片
+                 if !images.isEmpty {
+                     let newIndex = min(index, images.count - 1)
+                     if newIndex >= 0 {
+                         selectedImages.insert(images[newIndex].id)
+                         lastSelectedIndex = newIndex
                         
-                        // 通知窗口管理器滚动到新位置
-                        UnifiedWindowManager.shared.scrollToImage(at: newIndex)
-                    }
-                } else {
-                    // 没有剩余图片，清空选择
-                    selectedImages.removeAll()
-                    lastSelectedIndex = 0
-                }
-            } else if lastSelectedIndex > index {
-                // 如果删除的图片在lastSelectedIndex之前，需要调整lastSelectedIndex
-                lastSelectedIndex = max(0, lastSelectedIndex - 1)
-            }
+                         // 通知窗口管理器滚动到新位置
+                         UnifiedWindowManager.shared.scrollToImage(at: newIndex)
+                         
+                         // 更新单图视图缓存
+                         if isSingleViewMode {
+                             // 异步更新缓存，确保UI线程不被阻塞
+                             DispatchQueue.main.async {
+                                 // 通知SingleImageView更新缓存
+                                 NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
+                             }
+                         }
+                     }
+                 } else {
+                     // 没有剩余图片，清空选择
+                     selectedImages.removeAll()
+                     lastSelectedIndex = 0
+                 }
+             } else if lastSelectedIndex > index {
+                 // 如果删除的图片在lastSelectedIndex之前，需要调整lastSelectedIndex
+                 lastSelectedIndex = max(0, lastSelectedIndex - 1)
+                 
+                 // 更新单图视图缓存
+                 if isSingleViewMode {
+                     // 异步更新缓存，确保UI线程不被阻塞
+                     DispatchQueue.main.async {
+                         // 通知SingleImageView更新缓存
+                         NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
+                     }
+                 }
+             }
         }
-    }
-    
-    
-    func handleScrollToIndex(_ targetIndex: Int) {
-        UnifiedWindowManager.shared.scrollToImage(at: targetIndex, options: .delayed)
     }
     
     func handleSelectionChange(_ selectedImages: Set<UUID>) {
@@ -390,11 +388,8 @@ class ImageBrowserViewModel: ObservableObject {
         autoPlayTimer = nil
     }
        
-
-    
     
     let baseThumbnailSize: CGFloat = 200 // 基础缩略图尺寸（100%） - 改为公开属性，让ListView可以访问
-    
     
     func loadThumbnail(for imageItem: ImageItem, size: CGSize, completion: @escaping (NSImage?) -> Void) {
         if let cachedThumbnail = UnifiedCacheManager.shared.getCachedThumbnail(for: imageItem, size: size) {
@@ -431,13 +426,143 @@ class ImageBrowserViewModel: ObservableObject {
         // 通知缩略图大小已更改，触发界面更新
         objectWillChange.send()
     }
+    
+    // MARK: - 预加载和滚动相关方法
+    
+    /// 预加载目标区域
+    func preloadTargetRegion(for targetIndex: Int) {
+        guard targetIndex >= 0 && targetIndex < images.count else { return }
+        
+        // 根据目标位置智能调整预加载区域大小
+        let regionSize = calculateOptimalRegionSize(for: targetIndex)
+        let regionStart = max(0, targetIndex - regionSize)
+        let regionEnd = min(images.count - 1, targetIndex + regionSize)
+        
+        // 标记该区域为预加载
+        let regionKey = "region_\(regionStart)_\(regionEnd)"
+        listViewState.preloadedRegions.insert(regionKey)
+        
+        // 触发数据加载（如果需要）
+        checkAndLoadMoreData(for: regionEnd)
+    }
+    
+    /// 计算最优的预加载区域大小
+    private func calculateOptimalRegionSize(for targetIndex: Int) -> Int {
+        guard images.count > 0 else { return 10 }
+        
+        let totalItems = images.count
+        let relativePosition = CGFloat(targetIndex) / CGFloat(totalItems)
+        
+        // 根据目标位置调整区域大小
+        if relativePosition < 0.1 || relativePosition > 0.9 {
+            // 靠近边界时使用较小的区域头部或尾部10%的位置加载数量
+            return 8
+        } else if relativePosition < 0.2 || relativePosition > 0.8 {
+            // 靠近边界但不在最边缘时使用中等区域
+            return 12
+        } else {
+            // 中间区域使用较大的预加载区域
+            return 15
+        }
+    }
+    
+    /// 检查并加载更多数据
+    private func checkAndLoadMoreData(for regionEnd: Int) {
+        if regionEnd >= images.count - 5 && canLoadMore && !isLoadingMore {
+            // 如果预加载区域接近数据末尾，触发加载更多
+            dataManager.loadMoreImages()
+        }
+    }
+    
+    /// 统一的窗口大小变化处理方法
+    func handleWindowResizeStart(newSize: CGSize) {
+        listViewState.isWindowResizing = true
+        listViewState.availableWidth = newSize.width
+        listViewState.hasReceivedGeometry = true
+        
+        // 使用 windowResizeTask 替代 Timer
+        listViewState.windowResizeTask?.cancel()
+        
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.listViewState.isWindowResizing = false
+            print("Window Resize: Resize completed")
+        }
+        listViewState.windowResizeTask = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.ListView.resizeEndDelay, execute: workItem)
+        listViewState.lastWindowSize = newSize
+    }
+    
+    /// 计算平均行高（用于预加载区域和可见范围计算）
+    func computeAverageRowHeight(layoutCalculator: LayoutCalculatorProtocol) -> CGFloat {
+        guard !directoryGroups.isEmpty else { return 150.0 }
+        
+        // 使用第一个组的前100行
+        if let firstGroup = directoryGroups.first {
+            let rows = layoutCalculator.getFixedGridRows(
+                for: firstGroup,
+                availableWidth: listViewState.availableWidth,
+                hasReceivedGeometry: listViewState.hasReceivedGeometry
+            )
+            
+            var sampleHeights: [CGFloat] = []
+            for row in rows.prefix(100) { // 采样前100行
+                if !row.imageSizes.isEmpty {
+                    sampleHeights.append(row.imageSizes[0].height)
+                }
+            }
+            
+            if !sampleHeights.isEmpty {
+                let averageHeight = sampleHeights.reduce(0, +) / CGFloat(sampleHeights.count)
+                // print("ImageBrowserViewModel: 使用第一个组的前100行计算平均行高: \(averageHeight) (基于 \(sampleHeights.count) 行)")
+                return averageHeight
+            }
+        }
+        
+        // 最后的回退值
+        print("ImageBrowserViewModel: 使用默认平均行高: 150.0")
+        return 150.0
+    }
+    
+    // 动态计算平均行高 - 优化版本
+    func calculateAverageRowHeight(layoutCalculator: LayoutCalculatorProtocol) -> CGFloat {
+        // 1. 首先检查是否有缓存的平均行高可用
+        // if let cachedAverageHeight = listViewState.cachedAverageRowHeight {
+        //     return cachedAverageHeight
+        // }
+        
+        // 2. 如果没有缓存，计算并缓存结果
+        let averageHeight = computeAverageRowHeight(layoutCalculator: layoutCalculator)
+        listViewState.cachedAverageRowHeight = averageHeight
+        print("ImageBrowserViewModel: 计算平均行高: \(averageHeight)")
+        return averageHeight
+    }
+    
+    // 获取当前可见范围内的图片索引范围
+    func getCurrentVisibleRange(layoutCalculator: LayoutCalculatorProtocol) -> ClosedRange<Int> {
+        guard listViewState.viewportHeight > 0 else { return 0...0 }
+        
+        // 估算当前可见区域的起始和结束索引
+        let scrollOffset = listViewState.currentScrollOffset
+        
+        // 修复滚动位置计算：scrollOffset 应该是正值，表示向下滚动的距离
+        let visibleStartY = max(0, scrollOffset) // 确保不会出现负值
+        let visibleEndY = visibleStartY + listViewState.viewportHeight
+        
+        // 动态计算平均行高，替代固定估算值
+        let averageRowHeight = calculateAverageRowHeight(layoutCalculator: layoutCalculator)
+        
+        let startIndex = max(0, Int(visibleStartY / averageRowHeight))
+        let endIndex = min(images.count - 1, Int(visibleEndY / averageRowHeight))
+        
+        return startIndex...endIndex
+    }
 }
 
 enum Direction {
     case up, down, left, right
 }
 
-struct ImageItem: Identifiable, Equatable {
+struct ImageItem: Identifiable {
     let id: UUID  // 使用UUID作为唯一标识
     let url: URL
     let directoryName: String
@@ -460,9 +585,7 @@ struct ImageItem: Identifiable, Equatable {
         }
     }
     
-    static func == (lhs: ImageItem, rhs: ImageItem) -> Bool {
-        return lhs.id == rhs.id || lhs.url.path == rhs.url.path  // 同时比较UUID和文件路径
-    }
+
 }
 
 struct DirectoryGroup: Identifiable {
@@ -475,4 +598,27 @@ struct DirectoryGroup: Identifiable {
         self.images = images
         self.id = name  // 使用目录名作为唯一标识
     }
+}
+
+// MARK: - ListViewState
+/// ListView 的状态管理对象
+class ListViewState: ObservableObject {
+    @Published var availableWidth: CGFloat = 0
+    @Published var hasReceivedGeometry: Bool = false
+    @Published var isWindowResizing: Bool = false
+    @Published var lastWindowSize: CGSize = .zero
+    
+    // 预加载和区域定位相关状态
+    @Published var currentScrollOffset: CGFloat = 0
+    @Published var viewportHeight: CGFloat = 0
+    @Published var preloadedRegions: Set<String> = []
+    
+    // 缓存的平均行高，避免频繁重新计算
+    var cachedAverageRowHeight: CGFloat? = nil
+    
+    // 滚动位置跟踪
+    
+    // 定时器和任务, 用于处理窗口大小变化
+    var windowResizeTask: DispatchWorkItem? = nil
+    var scrollTask: DispatchWorkItem? = nil
 }

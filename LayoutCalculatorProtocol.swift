@@ -4,5 +4,4 @@ import SwiftUI
 protocol LayoutCalculatorProtocol {
     func getFixedGridRows(for group: DirectoryGroup, availableWidth: CGFloat, hasReceivedGeometry: Bool) -> [FixedGridRow]
     func calculateEffectiveWidth(availableWidth: CGFloat) -> CGFloat
-    func clearCache()
 }
