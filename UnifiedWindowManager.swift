@@ -206,26 +206,20 @@ class UnifiedWindowManager: ObservableObject {
     
     // 计算基于宽高比的窗口尺寸
     private func calculateWindowSizeForAspectRatio(_ aspectRatio: CGFloat, maxSize: CGSize) -> CGSize {
+        // 计算两种可能的尺寸
         let widthBasedHeight = maxSize.width / aspectRatio
         let widthBasedSize = CGSize(width: maxSize.width, height: widthBasedHeight)
         
         let heightBasedWidth = maxSize.height * aspectRatio
         let heightBasedSize = CGSize(width: heightBasedWidth, height: maxSize.height)
         
+        // 选择合适的尺寸（与 .aspectRatio(contentMode: .fit) 逻辑一致）
         if widthBasedSize.height <= maxSize.height {
+            // 基于宽度：填满宽度，高度按比例
             return widthBasedSize
-        } else if heightBasedSize.width <= maxSize.width {
-            return heightBasedSize
         } else {
-            // 如果两种方式都不合适，使用缩放因子
-            let widthRatio = maxSize.width / (maxSize.width * aspectRatio)
-            let heightRatio = maxSize.height / (maxSize.height / aspectRatio)
-            let scaleFactor = min(widthRatio, heightRatio)
-            
-            return CGSize(
-                width: maxSize.width * aspectRatio * scaleFactor,
-                height: maxSize.height / aspectRatio * scaleFactor
-            )
+            // 基于高度：填满高度，宽度按比例
+            return heightBasedSize
         }
     }
     

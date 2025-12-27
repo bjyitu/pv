@@ -35,10 +35,10 @@ extension NSImage {
 /// 单图视图常量定义
 struct SingleImageViewConstants {
     /// 图片初始缩放比例
-    static let initialScale: CGFloat = 1.06
+    static let initialScale: CGFloat = 1.04
     
     /// 图片动画结束时的缩放比例
-    static let targetScale: CGFloat = 1.08
+    static let targetScale: CGFloat = 1.02
     
     /// 自动加载更多图片的阈值（距离末尾的图片数量）
     static let loadMoreThreshold: Int = 5
@@ -278,6 +278,35 @@ struct SingleImageView: View {
         print("SingleImageView: 通知列表视图预加载区域，当前索引: \(currentIndex), 总图片数: \(viewModel.images.count)")
     }
     
+    private func printImageSizeInfo(image: NSImage, geometry: GeometryProxy) {
+        // 打印调试信息
+        print("=== 图片尺寸调试信息 ===")
+        print("图片原始尺寸: \(image.size)")
+        
+        // 获取窗口尺寸
+        if let window = NSApp.keyWindow {
+            print("窗口尺寸: \(window.frame.size)")
+            print("窗口内容区域尺寸: \(window.contentView?.frame.size ?? .zero)")
+        }
+        
+        print("GeometryReader 尺寸: \(geometry.size)")
+        print("安全区域: \(geometry.safeAreaInsets)")
+        
+        // 计算适配比例
+        let scaleX = geometry.size.width / image.size.width
+        let scaleY = geometry.size.height / image.size.height
+        let actualScale = min(scaleX, scaleY)
+        let displaySize = CGSize(
+            width: image.size.width * actualScale,
+            height: image.size.height * actualScale
+        )
+        print("适配比例: scaleX=\(scaleX), scaleY=\(scaleY), actualScale=\(actualScale)")
+        print("预期显示尺寸: \(displaySize)")
+        print("水平黑边: \((geometry.size.width - displaySize.width) / 2)")
+        print("垂直黑边: \((geometry.size.height - displaySize.height) / 2)")
+        print("========================")
+    }
+    
     private func imageView(for imageItem: ImageItem) -> some View {
         GeometryReader { geometry in
             // 获取图片：优先使用缓存，其次从文件加载
@@ -290,21 +319,25 @@ struct SingleImageView: View {
                 return nil
             }()
             
+            // 调试信息：打印尺寸信息
             if let image = image {
-                // 应用锐化处理
                 let sharpenedImage = image.sharpened(intensity: SingleImageViewConstants.sharpenIntensity, 
                                                     radius: SingleImageViewConstants.sharpenRadius) ?? image
                 
                 // 统一的图片显示视图
                 Image(nsImage: sharpenedImage)
                     .resizable()
-                    .interpolation(.high)
                     .antialiased(true)
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
+                    .clipped()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contrast(SingleImageViewConstants.contrastEnhancement)
                     .brightness(SingleImageViewConstants.brightnessAdjustment)
                     .scaleEffect(scale)
+                    .onAppear {
+                        printImageSizeInfo(image: sharpenedImage, geometry: geometry)
+                    }
                     .onChange(of: viewModel.currentImageIndex) { _ in
                         scale = SingleImageViewConstants.initialScale
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) {
@@ -323,7 +356,9 @@ struct SingleImageView: View {
                             .foregroundColor(.white)
                     )
             }
+            
         }
+        .edgesIgnoringSafeArea(.all)
     }
     
 }
