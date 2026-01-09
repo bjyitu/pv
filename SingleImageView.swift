@@ -133,9 +133,11 @@ struct SingleImageView: View {
             notifyListViewToPreloadCurrentRegion()
         }
         .onChange(of: viewModel.currentImageIndex) { _ in
-            //修改窗口大小,如果是第一张
+            //修改窗口大小,如果是第一张,则需要调整窗口大小,暂时禁用,每一张都调整窗口大小
             if viewModel.isFirstTimeInSingleView {
-                adjustWindowForCurrentImage()
+                adjustWindowForCurrentImage(shouldCenter: true)
+            }else{
+                adjustWindowForCurrentImage(shouldCenter: false)
             }
             
             // 检测是否接近图片列表末尾，自动加载更多图片
@@ -195,9 +197,9 @@ struct SingleImageView: View {
         )
     }
     
-    private func adjustWindowForCurrentImage() {
+    private func adjustWindowForCurrentImage(shouldCenter centered: Bool = true) {
         if let currentImage = self.currentImage {
-            UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: true)
+            UnifiedWindowManager.shared.adjustWindowForImage(currentImage.size, shouldCenter: centered)
             viewModel.isFirstTimeInSingleView = false
         }
     }

@@ -92,10 +92,13 @@ class UnifiedDataManager: ObservableObject {
             let fileManager = FileManager.default
             let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
             
+            // 按文件名排序，确保顺序一致（支持数字排序）
+            let sortedContents = (contents as NSArray).sortedArray(using: [NSSortDescriptor(key: "lastPathComponent", ascending: true, selector: #selector(NSString.localizedStandardCompare))]) as! [URL]
+            
             var directories: [URL] = []
             var imageFiles: [URL] = []
             
-            for url in contents {
+            for url in sortedContents {
                 let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
                 if resourceValues.isDirectory == true {
                     directories.append(url)
@@ -117,10 +120,13 @@ class UnifiedDataManager: ObservableObject {
             }
             
             // 随机排序所有扫描到的图片
-            let randomizedImages = randomizeImageOrder(allImages)
+            // let randomizedImages = randomizeImageOrder(allImages)
             
             // 保存所有扫描到的图片
-            allScannedImages = randomizedImages
+            // allScannedImages = randomizedImages
+            
+            // 不随机排序
+            allScannedImages = allImages
             
             // 只显示初始数量的图片
             let initialImages = Array(allScannedImages.prefix(maxInitialImages))
@@ -156,7 +162,10 @@ class UnifiedDataManager: ObservableObject {
             let fileManager = FileManager.default
             let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
             
-            for url in contents {
+            // 按文件名排序，确保顺序一致（支持数字排序）
+            let sortedContents = (contents as NSArray).sortedArray(using: [NSSortDescriptor(key: "lastPathComponent", ascending: true, selector: #selector(NSString.localizedStandardCompare))]) as! [URL]
+            
+            for url in sortedContents {
                 let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
                 if resourceValues.isDirectory == true {
                     let subImages = scanDirectoryRecursivelyComplete(url)

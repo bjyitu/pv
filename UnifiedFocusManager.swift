@@ -35,7 +35,7 @@ struct UnifiedFocusManagerConstants {
     /// 滚动事件相关常量
     struct ScrollEvents {
         /// 滚轮灵敏度阈值
-        static let wheelSensitivity: CGFloat = 0.5
+        static let wheelSensitivity: CGFloat = 0.1
     }
     
     /// 延迟时间相关常量

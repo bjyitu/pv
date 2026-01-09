@@ -5,7 +5,7 @@ import Combine
 /// 图片浏览器视图模型常量定义
 struct ImageBrowserViewModelConstants {
     /// 默认自动播放间隔时间（秒）
-    static let defaultAutoPlayInterval: TimeInterval = 3.0
+    static let defaultAutoPlayInterval: TimeInterval = 5.0
     
     /// 默认缩略图大小（像素）
     static let defaultThumbnailSize: CGFloat = 200
