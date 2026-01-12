@@ -326,11 +326,6 @@ class ImageBrowserViewModel: ObservableObject {
             // 使用UnifiedDataManager处理删除操作
             dataManager.deleteImage(at: index)
             
-            // 更新窗口标题栏中的总数信息
-            if isSingleViewMode && !images.isEmpty {
-                updateWindowTitle(for: lastSelectedIndex)
-            }
-            
             // 修复选择逻辑：删除后正确更新选择状态
             selectedImages.remove(image.id)
             
@@ -351,6 +346,9 @@ class ImageBrowserViewModel: ObservableObject {
                          
                          // 更新单图视图缓存
                          if isSingleViewMode {
+                             // 在单图模式下，需要更新currentImageIndex以显示下一张图片
+                             currentImageIndex = newIndex
+                             
                              // 异步更新缓存，确保UI线程不被阻塞
                              DispatchQueue.main.async {
                                  // 通知SingleImageView更新缓存
@@ -362,10 +360,16 @@ class ImageBrowserViewModel: ObservableObject {
                      // 没有剩余图片，清空选择
                      selectedImages.removeAll()
                      lastSelectedIndex = 0
+                     currentImageIndex = 0
                  }
              } else if lastSelectedIndex > index {
                  // 如果删除的图片在lastSelectedIndex之前，需要调整lastSelectedIndex
                  lastSelectedIndex = max(0, lastSelectedIndex - 1)
+                 
+                 // 在单图模式下，如果删除的图片在currentImageIndex之前，也需要调整currentImageIndex
+                 if isSingleViewMode && currentImageIndex > index {
+                     currentImageIndex = max(0, currentImageIndex - 1)
+                 }
                  
                  // 更新单图视图缓存
                  if isSingleViewMode {
@@ -375,6 +379,11 @@ class ImageBrowserViewModel: ObservableObject {
                          NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
                      }
                  }
+             }
+             
+             // 更新窗口标题栏中的总数信息
+             if isSingleViewMode && !images.isEmpty {
+                 updateWindowTitle(for: currentImageIndex)
              }
         }
     }
