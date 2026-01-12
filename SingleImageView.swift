@@ -35,7 +35,7 @@ extension NSImage {
 /// 单图视图常量定义
 struct SingleImageViewConstants {
     /// 图片初始缩放比例
-    static let initialScale: CGFloat = 1.04
+    static let initialScale: CGFloat = 1.02
     
     /// 图片动画结束时的缩放比例
     static let targetScale: CGFloat = 1.02
@@ -132,6 +132,10 @@ struct SingleImageView: View {
             // 通知列表视图更新预加载区域
             notifyListViewToPreloadCurrentRegion()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ClearSingleViewCache"))) { _ in
+            // 清理缓存的图片
+            cachedImage = nil
+        }
         .onChange(of: viewModel.currentImageIndex) { _ in
             //修改窗口大小,如果是第一张,则需要调整窗口大小,暂时禁用,每一张都调整窗口大小
             if viewModel.isFirstTimeInSingleView {
@@ -146,8 +150,10 @@ struct SingleImageView: View {
             // 重置动画进度
             resetAnimationProgress()
             
-            // 更新缓存并预加载相邻图片
-            updateSingleViewCache()
+            // 延迟更新缓存，确保images数组已经更新
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.updateSingleViewCache()
+            }
             
             // 通知列表视图更新预加载区域
             notifyListViewToPreloadCurrentRegion()

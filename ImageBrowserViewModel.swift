@@ -323,14 +323,19 @@ class ImageBrowserViewModel: ObservableObject {
         alert.addButton(withTitle: "取消")
         
         if alert.runModal() == .alertFirstButtonReturn {
+            // 清除被删除图片的单图视图缓存
+            UnifiedCacheManager.shared.singleViewCacheManager.clearSingleViewCache()
+            
+            // 通知SingleImageView清理缓存
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Notification.Name("ClearSingleViewCache"), object: nil)
+            }
+            
             // 使用UnifiedDataManager处理删除操作
             dataManager.deleteImage(at: index)
             
             // 修复选择逻辑：删除后正确更新选择状态
             selectedImages.remove(image.id)
-            
-            // 清除被删除图片的单图视图缓存
-             UnifiedCacheManager.shared.singleViewCacheManager.clearSingleViewCache()
              
              // 如果删除的是当前选中的图片，需要重新设置选择
              if lastSelectedIndex == index {
@@ -340,21 +345,16 @@ class ImageBrowserViewModel: ObservableObject {
                      if newIndex >= 0 {
                          selectedImages.insert(images[newIndex].id)
                          lastSelectedIndex = newIndex
+                         
+                         // 在单图模式下，同时更新currentImageIndex
+                         if isSingleViewMode {
+                             currentImageIndex = newIndex
+                             // 立即更新窗口标题，确保显示正确的页码
+                             updateWindowTitle(for: newIndex)
+                         }
                         
                          // 通知窗口管理器滚动到新位置
                          UnifiedWindowManager.shared.scrollToImage(at: newIndex)
-                         
-                         // 更新单图视图缓存
-                         if isSingleViewMode {
-                             // 在单图模式下，需要更新currentImageIndex以显示下一张图片
-                             currentImageIndex = newIndex
-                             
-                             // 异步更新缓存，确保UI线程不被阻塞
-                             DispatchQueue.main.async {
-                                 // 通知SingleImageView更新缓存
-                                 NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
-                             }
-                         }
                      }
                  } else {
                      // 没有剩余图片，清空选择
@@ -366,24 +366,21 @@ class ImageBrowserViewModel: ObservableObject {
                  // 如果删除的图片在lastSelectedIndex之前，需要调整lastSelectedIndex
                  lastSelectedIndex = max(0, lastSelectedIndex - 1)
                  
-                 // 在单图模式下，如果删除的图片在currentImageIndex之前，也需要调整currentImageIndex
-                 if isSingleViewMode && currentImageIndex > index {
-                     currentImageIndex = max(0, currentImageIndex - 1)
-                 }
-                 
-                 // 更新单图视图缓存
+                 // 在单图模式下，同时调整currentImageIndex
                  if isSingleViewMode {
-                     // 异步更新缓存，确保UI线程不被阻塞
-                     DispatchQueue.main.async {
-                         // 通知SingleImageView更新缓存
-                         NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
-                     }
+                     currentImageIndex = max(0, currentImageIndex - 1)
+                     // 立即更新窗口标题，确保显示正确的页码
+                     updateWindowTitle(for: currentImageIndex)
                  }
              }
              
-             // 更新窗口标题栏中的总数信息
-             if isSingleViewMode && !images.isEmpty {
-                 updateWindowTitle(for: currentImageIndex)
+             // 更新单图视图缓存
+             if isSingleViewMode {
+                 // 异步更新缓存，确保UI线程不被阻塞
+                 DispatchQueue.main.async {
+                     // 通知SingleImageView更新缓存
+                     NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
+                 }
              }
         }
     }
