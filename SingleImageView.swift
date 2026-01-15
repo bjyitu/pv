@@ -6,7 +6,7 @@ import AppKit
 /// NSImage扩展：添加锐化功能
 extension NSImage {
     /// 应用锐化滤镜
-    func sharpened(intensity: Double = 1, radius: Double = 1) -> NSImage? {
+    func sharpened(intensity: Double = 1.2, radius: Double = 1) -> NSImage? {
         guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return nil
         }
@@ -44,10 +44,10 @@ struct SingleImageViewConstants {
     static let loadMoreThreshold: Int = 5
     
     /// 锐化滤镜强度 (0.0 - 2.0)
-    static let sharpenIntensity: Double = 1.2
+    static let sharpenIntensity: Double = 5.0
     
     /// 锐化滤镜半径 (像素)
-    static let sharpenRadius: Double = 0.5
+    static let sharpenRadius: Double = 0.3
     
     /// 图片对比度增强值
     static let contrastEnhancement: CGFloat = 1.1
@@ -335,8 +335,8 @@ struct SingleImageView: View {
                 // 统一的图片显示视图
                 Image(nsImage: sharpenedImage)
                     .resizable()
-                    .antialiased(true)
                     .interpolation(.high)
+                    .antialiased(true)
                     .aspectRatio(contentMode: .fit)
                     .clipped()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
