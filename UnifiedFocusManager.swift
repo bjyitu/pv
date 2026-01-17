@@ -18,8 +18,8 @@ struct UnifiedFocusManagerConstants {
         static let `return` = Key(keyCode: 36, character: "\r", description: "返回列表视图/进入单张浏览模式")
         /// 上箭头 - 上一张图片
         static let upArrow = Key(keyCode: 126, character: "\u{F700}", description: " ")
-        /// 下箭头 - 在Finder中显示
-        static let downArrow = Key(keyCode: 125, character: "\u{F701}", description: "在Finder中显示")
+        /// 反斜杠键 - 在Finder中显示
+        static let downArrow = Key(keyCode: 42, character: "\\", description: "在Finder中显示")
         /// 右箭头 - 下一张图片
         static let rightArrow = Key(keyCode: 124, character: "\u{F702}", description: "下一张图片")
         /// 左箭头 - 上一张图片
@@ -140,9 +140,9 @@ class UnifiedFocusView: NSView {
             returnToListView(viewModel: viewModel)
         case UnifiedFocusManagerConstants.KeyEvents.upArrow.keyCode:  // 上箭头 
             break
-        case UnifiedFocusManagerConstants.KeyEvents.downArrow.keyCode:  // 下箭头 - 在Finder中显示
+        case UnifiedFocusManagerConstants.KeyEvents.downArrow.keyCode:  // 反斜杠键 - 在Finder中显示
             viewModel.stopAutoPlay()
-            print("Single view down arrow: currentImageIndex = \(viewModel.currentImageIndex)")
+            print("Single view backslash key: currentImageIndex = \(viewModel.currentImageIndex)")
             viewModel.dataManager.revealInFinder(at: viewModel.currentImageIndex)
         case UnifiedFocusManagerConstants.KeyEvents.rightArrow.keyCode:  // 右箭头 - 下一张图片
             viewModel.stopAutoPlay()
@@ -213,7 +213,7 @@ class UnifiedFocusView: NSView {
             }
         case UnifiedFocusManagerConstants.KeyEvents.upArrow.character:  // 上箭头
             break
-        case UnifiedFocusManagerConstants.KeyEvents.downArrow.character:  // 下箭头 - 在Finder中显示
+        case UnifiedFocusManagerConstants.KeyEvents.downArrow.character:  // 反斜杠键 - 在Finder中显示
             handleRevealInFinderKeyEvent(event: event, viewModel: viewModel)
         case UnifiedFocusManagerConstants.KeyEvents.leftArrow.character:  // 左箭头 - 下一张图片
             viewModel.navigateSelection(direction: .left)  // 左箭头：索引增加（下一张）

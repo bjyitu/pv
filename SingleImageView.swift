@@ -14,10 +14,15 @@ extension NSImage {
         let ciImage = CIImage(cgImage: cgImage)
         
         // 使用USM锐化滤镜（Unsharp Mask）
-        let sharpenFilter = CIFilter.unsharpMask()
+        // let sharpenFilter = CIFilter.unsharpMask()
+        // sharpenFilter.inputImage = ciImage
+        // sharpenFilter.intensity = Float(intensity)
+        // sharpenFilter.radius = Float(radius)
+
+        let sharpenFilter = CIFilter.noiseReduction()
         sharpenFilter.inputImage = ciImage
-        sharpenFilter.intensity = Float(intensity)
-        sharpenFilter.radius = Float(radius)
+        sharpenFilter.noiseLevel = 0.015 //最大0.1,0.01至0.02
+        sharpenFilter.sharpness = 0.8 //最大2,0.2-1之间
         
         guard let outputImage = sharpenFilter.outputImage else {
             return nil
@@ -335,8 +340,8 @@ struct SingleImageView: View {
                 // 统一的图片显示视图
                 Image(nsImage: sharpenedImage)
                     .resizable()
-                    .interpolation(.high)
-                    .antialiased(true)
+                    // .antialiased(true)
+                    // .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .clipped()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
