@@ -90,10 +90,16 @@ class UnifiedDataManager: ObservableObject {
         
         do {
             let fileManager = FileManager.default
-            let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+            let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey], options: [])
             
-            // 按文件名排序，确保顺序一致（支持数字排序）
-            let sortedContents = (contents as NSArray).sortedArray(using: [NSSortDescriptor(key: "lastPathComponent", ascending: true, selector: #selector(NSString.localizedStandardCompare))]) as! [URL]
+            // 按文件创建时间逆向排序（降序）
+            let sortedContents = contents.sorted {
+                guard let date1 = try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate,
+                      let date2 = try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate else {
+                    return false // 如果无法获取创建时间，保持原顺序
+                }
+                return date1 > date2 // 降序排列：新文件在前
+            }
             
             var directories: [URL] = []
             var imageFiles: [URL] = []
@@ -160,10 +166,16 @@ class UnifiedDataManager: ObservableObject {
         
         do {
             let fileManager = FileManager.default
-            let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+            let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey], options: [])
             
-            // 按文件名排序，确保顺序一致（支持数字排序）
-            let sortedContents = (contents as NSArray).sortedArray(using: [NSSortDescriptor(key: "lastPathComponent", ascending: true, selector: #selector(NSString.localizedStandardCompare))]) as! [URL]
+            // 按文件创建时间逆向排序（降序）
+            let sortedContents = contents.sorted {
+                guard let date1 = try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate,
+                      let date2 = try? $1.resourceValues(forKeys: [.creationDateKey]).creationDate else {
+                    return false // 如果无法获取创建时间，保持原顺序
+                }
+                return date1 > date2 // 降序排列：新文件在前
+            }
             
             for url in sortedContents {
                 let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
@@ -338,6 +350,68 @@ class UnifiedDataManager: ObservableObject {
     func image(at index: Int) -> ImageItem? {
         guard images.indices.contains(index) else { return nil }
         return images[index]
+    }
+    
+    // MARK: - 排序方法
+    
+    /// 按文件名对完整图片列表进行排序
+    func sortImagesByName() {
+        // 对完整扫描的图片列表按文件名排序
+        allScannedImages.sort {
+            $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
+        }
+        
+        // 重新加载排序后的图片（保持当前分页状态）
+        let currentCount = images.count
+        if currentCount < allScannedImages.count {
+            // 如果当前显示的不是完整列表，重新加载分页
+            images = Array(allScannedImages.prefix(currentCount))
+        } else {
+            // 如果当前显示的是完整列表，直接使用排序后的完整列表
+            images = allScannedImages
+        }
+        
+        // 更新目录分组以反映新的排序
+        if let currentDirectory = currentDirectory {
+            directoryGroups = [DirectoryGroup(name: currentDirectory.lastPathComponent, images: images)]
+        }
+        
+        // 清理缓存以确保显示正确的排序
+        UnifiedCacheManager.shared.clearAllCaches()
+        
+        print("按文件名排序完成：共 \(allScannedImages.count) 张图片，当前显示 \(images.count) 张")
+    }
+    
+    /// 按创建时间对完整图片列表进行排序（降序：新文件在前）
+    func sortImagesByCreationDate() {
+        // 对完整扫描的图片列表按创建时间降序排序
+        allScannedImages.sort {
+            guard let date1 = try? $0.url.resourceValues(forKeys: [.creationDateKey]).creationDate,
+                  let date2 = try? $1.url.resourceValues(forKeys: [.creationDateKey]).creationDate else {
+                return false // 如果无法获取创建时间，保持原顺序
+            }
+            return date1 > date2 // 降序排列：新文件在前
+        }
+        
+        // 重新加载排序后的图片（保持当前分页状态）
+        let currentCount = images.count
+        if currentCount < allScannedImages.count {
+            // 如果当前显示的不是完整列表，重新加载分页
+            images = Array(allScannedImages.prefix(currentCount))
+        } else {
+            // 如果当前显示的是完整列表，直接使用排序后的完整列表
+            images = allScannedImages
+        }
+        
+        // 更新目录分组以反映新的排序
+        if let currentDirectory = currentDirectory {
+            directoryGroups = [DirectoryGroup(name: currentDirectory.lastPathComponent, images: images)]
+        }
+        
+        // 清理缓存以确保显示正确的排序
+        UnifiedCacheManager.shared.clearAllCaches()
+        
+        print("按创建时间排序完成：共 \(allScannedImages.count) 张图片，当前显示 \(images.count) 张")
     }
     
     // MARK: - 数据清理

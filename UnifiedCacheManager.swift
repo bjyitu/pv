@@ -145,11 +145,19 @@ class SingleViewCacheManager {
             
             let finalSize: CGSize
             if aspectRatio > windowAspectRatio {
-                // 图片更宽，以宽度为基准
-                finalSize = CGSize(width: targetSize.width, height: targetSize.width / aspectRatio)
+                // 图片更宽，以宽度为基准，确保填满窗口宽度
+                let scaleFactor = targetSize.width / imageItem.size.width
+                finalSize = CGSize(
+                    width: targetSize.width,
+                    height: imageItem.size.height * scaleFactor
+                )
             } else {
-                // 图片更高，以高度为基准
-                finalSize = CGSize(width: targetSize.height * aspectRatio, height: targetSize.height)
+                // 图片更高，以高度为基准，确保填满窗口高度
+                let scaleFactor = targetSize.height / imageItem.size.height
+                finalSize = CGSize(
+                    width: imageItem.size.width * scaleFactor,
+                    height: targetSize.height
+                )
             }
             
             // 创建高质量缩略图选项

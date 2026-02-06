@@ -53,7 +53,7 @@ class ImageBrowserViewModel: ObservableObject {
     private var originalImageOrder: [ImageItem] = []
     
     // 布局切换状态管理
-    @Published var isSmartLayoutEnabled: Bool = false // 默认使用网格
+    @Published var isSmartLayoutEnabled: Bool = true // 默认使用网格
     
     @Published var isFirstTimeInSingleView = true
     
@@ -174,9 +174,12 @@ class ImageBrowserViewModel: ObservableObject {
 
     
     private func updateWindowTitle(for index: Int) {
-        guard images.indices.contains(index) else { return }
-        let currentImage = images[index]
-        UnifiedWindowManager.shared.updateTitle(for: currentImage, index: index, total: totalImagesInDirectory)
+        // 使用异步方式更新标题，确保images数组已经更新
+        DispatchQueue.main.async {
+            guard self.images.indices.contains(index) else { return }
+            let currentImage = self.images[index]
+            UnifiedWindowManager.shared.updateTitle(for: currentImage, index: index, total: self.totalImagesInDirectory)
+        }
     }
     
     func selectImage(at index: Int) {
@@ -375,13 +378,16 @@ class ImageBrowserViewModel: ObservableObject {
              }
              
              // 更新单图视图缓存
-             if isSingleViewMode {
-                 // 异步更新缓存，确保UI线程不被阻塞
-                 DispatchQueue.main.async {
-                     // 通知SingleImageView更新缓存
-                     NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
-                 }
-             }
+              if isSingleViewMode {
+                  // 异步更新缓存，确保UI线程不被阻塞
+                  DispatchQueue.main.async {
+                      // 通知SingleImageView更新缓存
+                      NotificationCenter.default.post(name: Notification.Name("UpdateSingleViewCache"), object: nil)
+                      
+                      // 确保标题已更新
+                      self.updateWindowTitle(for: self.currentImageIndex)
+                  }
+              }
         }
     }
     
@@ -412,7 +418,17 @@ class ImageBrowserViewModel: ObservableObject {
     
     // 布局切换方法
     func toggleLayout() {
+        let wasSmartLayout = isSmartLayoutEnabled
         isSmartLayoutEnabled.toggle()
+        
+        // 如果从智能布局切换到标准布局，将排序改为按文件名排序
+        if wasSmartLayout && !isSmartLayoutEnabled {
+            // 切换到标准布局时，使用文件名排序
+            dataManager.sortImagesByName()
+        } else if !wasSmartLayout && isSmartLayoutEnabled {
+            // 切换回智能布局时，恢复按创建时间排序
+            dataManager.sortImagesByCreationDate()
+        }
         
         // 通知布局已更改，触发界面更新
         objectWillChange.send()

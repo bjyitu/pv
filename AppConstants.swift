@@ -37,7 +37,7 @@ struct AppConstants {
         static let minHeight: CGFloat = 300
         
         /// 默认窗口宽度（像素）
-        static let defaultWidth: CGFloat = 1200
+        static let defaultWidth: CGFloat = 1840
         
         /// 默认窗口高度（像素）
         static let defaultHeight: CGFloat = 800

@@ -13,16 +13,21 @@ extension NSImage {
         
         let ciImage = CIImage(cgImage: cgImage)
         
-        // 使用USM锐化滤镜（Unsharp Mask）
-        // let sharpenFilter = CIFilter.unsharpMask()
-        // sharpenFilter.inputImage = ciImage
-        // sharpenFilter.intensity = Float(intensity)
-        // sharpenFilter.radius = Float(radius)
+        let noiseFilter = CIFilter.noiseReduction()
+        noiseFilter.inputImage = ciImage
+        noiseFilter.noiseLevel = 0.015 //最大0.1,0.01至0.02
+        noiseFilter.sharpness = 0 //最大2,0.2-1之间,0.8
 
-        let sharpenFilter = CIFilter.noiseReduction()
-        sharpenFilter.inputImage = ciImage
-        sharpenFilter.noiseLevel = 0.015 //最大0.1,0.01至0.02
-        sharpenFilter.sharpness = 0.8 //最大2,0.2-1之间
+        guard let noiseImage = noiseFilter.outputImage else {
+            return nil
+        }
+        
+        // 使用现代API创建滤镜
+        let sharpenFilter = CIFilter.unsharpMask()
+        sharpenFilter.inputImage = noiseImage
+        sharpenFilter.intensity = Float(intensity)
+        sharpenFilter.radius = Float(radius)
+        
         
         guard let outputImage = sharpenFilter.outputImage else {
             return nil
@@ -49,10 +54,10 @@ struct SingleImageViewConstants {
     static let loadMoreThreshold: Int = 5
     
     /// 锐化滤镜强度 (0.0 - 2.0)
-    static let sharpenIntensity: Double = 5.0
+    static let sharpenIntensity: Double = 1
     
     /// 锐化滤镜半径 (像素)
-    static let sharpenRadius: Double = 0.3
+    static let sharpenRadius: Double = 0.5
     
     /// 图片对比度增强值
     static let contrastEnhancement: CGFloat = 1.1
@@ -142,11 +147,12 @@ struct SingleImageView: View {
             cachedImage = nil
         }
         .onChange(of: viewModel.currentImageIndex) { _ in
-            //修改窗口大小,如果是第一张,则需要调整窗口大小,暂时禁用,每一张都调整窗口大小
+            //修改窗口大小,如果是第一张,则需要调整窗口大小,暂时禁用,每一张都调整窗口大小并且不需要居中
             if viewModel.isFirstTimeInSingleView {
                 adjustWindowForCurrentImage(shouldCenter: true)
             }else{
-                adjustWindowForCurrentImage(shouldCenter: false)
+                // adjustWindowForCurrentImage(shouldCenter: false)
+                print("不是第一张,不需要调整窗口大小")
             }
             
             // 检测是否接近图片列表末尾，自动加载更多图片
@@ -340,8 +346,8 @@ struct SingleImageView: View {
                 // 统一的图片显示视图
                 Image(nsImage: sharpenedImage)
                     .resizable()
-                    // .antialiased(true)
-                    // .interpolation(.high)
+                    .interpolation(.high)
+                    .antialiased(true)
                     .aspectRatio(contentMode: .fit)
                     .clipped()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
