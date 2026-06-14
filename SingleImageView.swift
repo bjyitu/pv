@@ -54,7 +54,7 @@ struct SingleImageViewConstants {
     static let loadMoreThreshold: Int = 5
     
     /// 锐化滤镜强度 (0.0 - 2.0)
-    static let sharpenIntensity: Double = 1
+    static let sharpenIntensity: Double = 2.5
     
     /// 锐化滤镜半径 (像素)
     static let sharpenRadius: Double = 0.5

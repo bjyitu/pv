@@ -358,7 +358,7 @@ struct LayoutToggleButton: View {
         }
         .buttonStyle(LayoutToggleButtonStyle(isPressed: $isPressed))
         .cornerRadius(ImageBrowserViewStyles.Buttons.layoutToggleButtonCornerRadius)
-        .help(isSmartLayout ? "切换到固定网格布局" : "切换到智能布局")
+        .help(isSmartLayout ? "按文件名排序(网格)" : "按创建时间排序(智能)")
         .scaleEffect(buttonScale)
         .opacity(buttonOpacity)
         .onHover { hovering in

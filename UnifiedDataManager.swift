@@ -354,11 +354,47 @@ class UnifiedDataManager: ObservableObject {
     
     // MARK: - 排序方法
     
-    /// 按文件名对完整图片列表进行排序
-    func sortImagesByName() {
-        // 对完整扫描的图片列表按文件名排序
+    /// 比较两个图片所在目录的创建时间顺序
+    /// - Returns: .orderedAscending（dir1早于dir2）, .orderedDescending（dir1晚于dir2）, .orderedSame（同目录或无法比较）
+    private func compareDirectoryOrder(_ image1: ImageItem, _ image2: ImageItem) -> ComparisonResult {
+        // 获取图片所在目录
+        let dir1 = image1.url.deletingLastPathComponent()
+        let dir2 = image2.url.deletingLastPathComponent()
+        
+        // 如果是同一目录，返回相同
+        if dir1 == dir2 {
+            return .orderedSame
+        }
+        
+        // 获取目录创建时间
+        guard let date1 = try? dir1.resourceValues(forKeys: [.creationDateKey]).creationDate,
+              let date2 = try? dir2.resourceValues(forKeys: [.creationDateKey]).creationDate else {
+            return .orderedSame // 无法获取时间，视为相同
+        }
+        
+        // 比较目录创建时间
+        if date1 > date2 {
+            return .orderedDescending
+        } else if date1 < date2 {
+            return .orderedAscending
+        } else {
+            return .orderedSame
+        }
+    }
+    
+    /// 按文件名对完整图片列表进行排序，保留首次加载时的目录排序逻辑
+    /// - Parameter ascending: 是否升序排列，默认为 true（升序：A-Z），设为 false 则为降序（Z-A）
+    func sortImagesByName(ascending: Bool = true) {
+        // 对完整扫描的图片列表排序：先按目录创建时间排序，同一目录内按文件名排序
         allScannedImages.sort {
-            $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent) == .orderedAscending
+            // 先比较目录创建时间（保持首次加载时的目录顺序）
+            let dirOrder = compareDirectoryOrder($0, $1)
+            if dirOrder != .orderedSame {
+                return dirOrder == .orderedDescending // 目录按创建时间降序
+            }
+            // 同一目录内按文件名排序
+            let comparison = $0.url.lastPathComponent.localizedStandardCompare($1.url.lastPathComponent)
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
         
         // 重新加载排序后的图片（保持当前分页状态）
@@ -379,13 +415,19 @@ class UnifiedDataManager: ObservableObject {
         // 清理缓存以确保显示正确的排序
         UnifiedCacheManager.shared.clearAllCaches()
         
-        print("按文件名排序完成：共 \(allScannedImages.count) 张图片，当前显示 \(images.count) 张")
+        print("按文件名\(ascending ? "升序" : "降序")排序完成：共 \(allScannedImages.count) 张图片，当前显示 \(images.count) 张")
     }
     
-    /// 按创建时间对完整图片列表进行排序（降序：新文件在前）
+    /// 按创建时间对完整图片列表进行排序（降序：新文件在前），保留首次加载时的目录排序逻辑
     func sortImagesByCreationDate() {
-        // 对完整扫描的图片列表按创建时间降序排序
+        // 对完整扫描的图片列表排序：先按目录创建时间排序，同一目录内按文件创建时间排序
         allScannedImages.sort {
+            // 先比较目录创建时间（保持首次加载时的目录顺序）
+            let dirOrder = compareDirectoryOrder($0, $1)
+            if dirOrder != .orderedSame {
+                return dirOrder == .orderedDescending // 目录按创建时间降序
+            }
+            // 同一目录内按文件创建时间降序排序
             guard let date1 = try? $0.url.resourceValues(forKeys: [.creationDateKey]).creationDate,
                   let date2 = try? $1.url.resourceValues(forKeys: [.creationDateKey]).creationDate else {
                 return false // 如果无法获取创建时间，保持原顺序
