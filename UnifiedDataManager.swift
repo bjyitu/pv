@@ -147,7 +147,7 @@ class UnifiedDataManager: ObservableObject {
             UnifiedCacheManager.shared.clearAllCaches()
             
             self.isLoading = false
-            
+
             if self.images.isEmpty {
                 self.errorMessage = AppConstants.ErrorMessages.emptyDirectory
             }
